@@ -16,4 +16,5 @@
     <string name="start_failed">تعذر تشغيل الشبح. حاول مرة أخرى.</string>
     <string name="notification_channel">الشبح العائم</string>
     <string name="notification_text">الشبح يعمل فوق التطبيقات. افتح التطبيق لإخفائه.</string>
+    <string name="version_label">الإصدار %s</string>
 </resources>

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -23,6 +24,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         statusText = findViewById(R.id.statusText)
+        showVersion()
 
         findViewById<Button>(R.id.showButton).setOnClickListener { onShowClicked() }
         findViewById<Button>(R.id.hideButton).setOnClickListener {
@@ -92,6 +94,18 @@ class MainActivity : Activity() {
                 pendingShow = false
                 Toast.makeText(this, R.string.settings_unavailable, Toast.LENGTH_LONG).show()
             }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun showVersion() {
+        val name = try {
+            packageManager.getPackageInfo(packageName, 0).versionName
+        } catch (e: PackageManager.NameNotFoundException) {
+            null
+        }
+        if (name != null) {
+            findViewById<TextView>(R.id.versionText).text = getString(R.string.version_label, name)
         }
     }
 

@@ -14,7 +14,6 @@ import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.View
 import android.view.animation.LinearInterpolator
-import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
@@ -23,8 +22,8 @@ import kotlin.random.Random
 
 /**
  * Cute 3D-style ghost drawn with Canvas on a fully transparent background.
- * Expressions are part of the drawing itself (eyes, lids, mouth, tongue, blush)
- * and blend smoothly between moods. Logical drawing box: 100 x 128.
+ * Face (eyes, brows, mouth, tongue, blush) and body motion are drawn together and
+ * every mood has its own matching motion. Logical drawing box: 100 x 128.
  */
 class GhostView @JvmOverloads constructor(
     context: Context,
@@ -33,7 +32,7 @@ class GhostView @JvmOverloads constructor(
 
     // Order must match PRESETS
     private enum class Mood { HAPPY, SURPRISED, SLEEPY, SAD, MISCHIEVOUS, ANGRY, RELAXED, SLEEPING }
-    private enum class TapAnim { HOP, HIGH_JUMP, DOUBLE_HOP, WIGGLE_HOP, LEAP, STARTLE, SHAKE }
+    private enum class TapAnim { HOP, DOUBLE_HOP, WIGGLE_HOP, REBOUND, LEAN, SHAKE }
 
     companion object {
         const val LOGICAL_W = 100f
@@ -46,34 +45,82 @@ class GhostView @JvmOverloads constructor(
         private const val MAX_DRAG_TILT = 14f
 
         // Face parameter layout:
-        // 0 eyeRx, 1 eyeRy, 2 lidInL, 3 lidOutL, 4 lidInR, 5 lidOutR,
-        // 6 mouthXL, 7 mouthXR, 8 mouthYL, 9 mouthYR, 10 ctrlTop, 11 ctrlBottom,
-        // 12 tongue, 13 blush, 14 eyesClosed, 15 lowerLid (smiling eyes), 16 lookX
-        private const val N = 17
+        //  0 eyeRx   1 eyeRy   2 lidInL  3 lidOutL  4 lidInR  5 lidOutR
+        //  6 mouthXL 7 mouthXR 8 mouthYL 9 mouthYR 10 ctrlTop 11 ctrlBottom
+        // 12 tongue 13 blush  14 eyesClosed 15 lowerLid 16 lookX
+        // 17 browAlpha 18 browInYL 19 browOutYL 20 browInYR 21 browOutYR 22 browCurve
+        // 23 glintScale 24 lookY
+        private const val N = 25
 
         private val PRESETS = arrayOf(
-            // HAPPY: clear smile, smiling (lifted lower lid) eyes
-            floatArrayOf(7.5f, 9f, 0f, 0f, 0f, 0f, 43f, 57f, 63.5f, 63.5f, 66f, 74f, 0f, 1f, 0f, 0.28f, 0f),
-            // SURPRISED: wide eyes, slightly open mouth
-            floatArrayOf(8.7f, 11.5f, 0f, 0f, 0f, 0f, 46.5f, 53.5f, 67f, 67f, 62f, 74.5f, 0f, 1f, 0f, 0f, 0f),
-            // SLEEPY (lids are driven dynamically)
-            floatArrayOf(7.5f, 9f, 0.5f, 0.5f, 0.5f, 0.5f, 46f, 54f, 66f, 66f, 66.5f, 69.5f, 0f, 0.8f, 0f, 0f, 0f),
-            // SAD: drooping outer lids, small frown
-            floatArrayOf(7.5f, 9.5f, 0f, 0.55f, 0f, 0.55f, 43.5f, 56.5f, 67f, 67f, 60.5f, 63.5f, 0f, 0.6f, 0f, 0f, 0f),
-            // MISCHIEVOUS: side glance, lopsided grin with tongue
-            floatArrayOf(7.5f, 9f, 0.3f, 0f, 0.45f, 0.15f, 42f, 58f, 64.5f, 61.5f, 63.5f, 76f, 1f, 1f, 0f, 0.15f, 2.8f),
-            // ANGRY (mild): narrowed eyes, small pout
-            floatArrayOf(7.5f, 8f, 0.5f, 0f, 0.5f, 0f, 44.5f, 55.5f, 67.5f, 67.5f, 63.8f, 66.4f, 0f, 0.9f, 0f, 0.12f, 0f),
-            // RELAXED: calm face, gentle smile (the natural expression)
-            floatArrayOf(7.5f, 8.6f, 0.12f, 0.12f, 0.12f, 0.12f, 45f, 55f, 64.5f, 64.5f, 65.5f, 69.5f, 0f, 0.9f, 0f, 0f, 0f),
+            // HAPPY: wide smile, smiling eyes, soft raised brows
+            floatArrayOf(
+                7.5f, 9f, 0f, 0f, 0f, 0f,
+                41.5f, 58.5f, 63f, 63f, 65.5f, 76f,
+                0f, 1f, 0f, 0.34f, 0f,
+                0.55f, 34f, 34.5f, 34f, 34.5f, 2.2f,
+                1.15f, 0f
+            ),
+            // SURPRISED: big eyes, high brows, small round mouth
+            floatArrayOf(
+                8.9f, 12f, 0f, 0f, 0f, 0f,
+                46.5f, 53.5f, 67f, 67f, 62f, 74.5f,
+                0f, 1f, 0f, 0f, 0f,
+                0.85f, 29f, 29.5f, 29f, 29.5f, 2.5f,
+                1.3f, 0f
+            ),
+            // SLEEPY: heavy lids (driven dynamically), low relaxed brows
+            floatArrayOf(
+                7.5f, 9f, 0.5f, 0.5f, 0.5f, 0.5f,
+                46f, 54f, 66f, 66f, 66.5f, 69.5f,
+                0f, 0.8f, 0f, 0f, 0f,
+                0.35f, 37f, 37.8f, 37f, 37.8f, 0.8f,
+                0.8f, 1f
+            ),
+            // SAD: big watery eyes, drooping outer lids, brows slanting up in the middle, frown
+            floatArrayOf(
+                8f, 10f, 0f, 0.55f, 0f, 0.55f,
+                43.5f, 56.5f, 67f, 67f, 60.5f, 63.5f,
+                0f, 0.6f, 0f, 0f, 0f,
+                0.8f, 33.5f, 38f, 33.5f, 38f, 0.5f,
+                1.45f, 1f
+            ),
+            // MISCHIEVOUS: half lids, one brow raised, lopsided grin with tongue, side glance
+            floatArrayOf(
+                7.5f, 9f, 0.3f, 0f, 0.45f, 0.15f,
+                42f, 58f, 64.5f, 61.5f, 63.5f, 76f,
+                1f, 1f, 0f, 0.15f, 2.8f,
+                0.85f, 36f, 35f, 31.5f, 30.5f, 1.8f,
+                1f, 0f
+            ),
+            // ANGRY (mild): narrow eyes, slanted lids and brows, small pout
+            floatArrayOf(
+                7.5f, 8f, 0.5f, 0f, 0.5f, 0f,
+                44.5f, 55.5f, 67.5f, 67.5f, 63.8f, 66.4f,
+                0f, 0.9f, 0f, 0.12f, 0f,
+                0.9f, 36f, 32.5f, 36f, 32.5f, 0f,
+                0.8f, 0f
+            ),
+            // RELAXED: the natural face, no brows, gentle smile
+            floatArrayOf(
+                7.5f, 8.6f, 0.12f, 0.12f, 0.12f, 0.12f,
+                45f, 55f, 64.5f, 64.5f, 65.5f, 69.5f,
+                0f, 0.9f, 0f, 0f, 0f,
+                0f, 34.5f, 35f, 34.5f, 35f, 1.5f,
+                1f, 0f
+            ),
             // SLEEPING: eyes closed
-            floatArrayOf(7.5f, 9f, 0f, 0f, 0f, 0f, 46f, 54f, 66f, 66f, 66.5f, 69.5f, 0f, 0.8f, 1f, 0f, 0f)
+            floatArrayOf(
+                7.5f, 9f, 0f, 0f, 0f, 0f,
+                46f, 54f, 66f, 66f, 66.5f, 69.5f,
+                0f, 0.8f, 1f, 0f, 0f,
+                0f, 37f, 37.8f, 37f, 37.8f, 0.8f,
+                1f, 1f
+            )
         )
     }
 
-    private val happyAnims = listOf(
-        TapAnim.HOP, TapAnim.HIGH_JUMP, TapAnim.DOUBLE_HOP, TapAnim.WIGGLE_HOP
-    )
+    private val happyAnims = listOf(TapAnim.HOP, TapAnim.DOUBLE_HOP, TapAnim.WIGGLE_HOP)
 
     // ----- Face state -----
     private val cur = FloatArray(N)
@@ -81,7 +128,6 @@ class GhostView @JvmOverloads constructor(
     private var mood = Mood.RELAXED
     private var overrideMood: Mood? = null
     private var overrideTimer = 0f
-    private var momentTimer = Random.nextFloat() * 6f + 8f
 
     // ----- Time / idle -----
     private var time = 0f
@@ -96,11 +142,26 @@ class GhostView @JvmOverloads constructor(
     private var doubleBlinkPending = false
     private var blinkWasSecond = false
 
-    // ----- Float -----
+    // ----- Brow motion -----
+    private var browKickPos = 0f
+    private var browKickVel = 0f
+    private var browTwitchT = -1f
+    private var browTwitch = 0f
+
+    // ----- Gaze -----
+    private var glanceTimer = Random.nextFloat() * 8f + 8f
+    private var glanceT = -1f
+    private var glanceAutoDir = 1f
+    private var glanceDir = 1f // direction of mischievous lean + glance
+    private var mischT = 0f
+
+    // ----- Body: float and mood-linked motion -----
     private var floatPhase = 0f
     private var floatY = 0f
     private var idleTilt = 0f
     private var breath = 1f
+    private var sagAmt = 0f   // sad: body lowers slightly
+    private var swayAmt = 0f  // sleepy: slow sway
 
     // ----- Tap animation (only one at a time) -----
     private var tapAnim: TapAnim? = null
@@ -205,6 +266,13 @@ class GhostView @JvmOverloads constructor(
         color = Color.parseColor("#FF7A9A")
     }
 
+    private val browPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#3B3B4A")
+        style = Paint.Style.STROKE
+        strokeWidth = 1.9f
+        strokeCap = Paint.Cap.ROUND
+    }
+
     private val zPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#8F86D0")
         style = Paint.Style.STROKE
@@ -226,7 +294,7 @@ class GhostView @JvmOverloads constructor(
         idle = 0f
     }
 
-    /** A quick tap: picks a reaction (happy / surprised / mischievous) with a short move. */
+    /** A quick tap: picks a reaction (happy / surprised / mischievous) with a matching move. */
     fun react() {
         val now = SystemClock.uptimeMillis()
         tapStreak = if (now - lastTapAt < 1200L) tapStreak + 1 else 1
@@ -235,23 +303,25 @@ class GhostView @JvmOverloads constructor(
 
         if (wokeByTouch) {
             wokeByTouch = false
-            startTapAnim(TapAnim.STARTLE)
-            setOverride(Mood.SURPRISED, 0.9f)
+            if (tapAnim == null) startTapAnim(TapAnim.REBOUND)
+            setOverride(Mood.SURPRISED, 1.0f)
             return
         }
 
-        // Never pile animations up: ignore taps while the current move is still early
-        if (tapAnim != null && tapT / tapDur < 0.7f) return
+        // A new move never starts before the current one has finished
+        if (tapAnim != null) return
 
         val (reaction, anim) = pickReaction()
         lastReaction = reaction
         lastTapAnim = anim
         startTapAnim(anim)
+        if (reaction == Mood.MISCHIEVOUS) glanceDir = tapDir
+        if (reaction == Mood.ANGRY) tapStreak = 0
         setOverride(
             reaction,
             when (reaction) {
-                Mood.SURPRISED -> 1.2f
-                Mood.MISCHIEVOUS -> 2.0f
+                Mood.SURPRISED -> 1.3f
+                Mood.MISCHIEVOUS -> 2.4f
                 Mood.ANGRY -> 1.6f
                 else -> 1.5f
             }
@@ -304,15 +374,15 @@ class GhostView @JvmOverloads constructor(
     }
 
     private fun pickReaction(): Pair<Mood, TapAnim> {
-        // Rapid tapping annoys the ghost (mild, cute anger)
+        // Rapid tapping mildly annoys the ghost
         if (tapStreak >= 5) return Pair(Mood.ANGRY, TapAnim.SHAKE)
 
         val options = listOf(Mood.HAPPY, Mood.SURPRISED, Mood.MISCHIEVOUS)
             .filter { it != lastReaction }
         val reaction = options.random()
         val anim = when (reaction) {
-            Mood.SURPRISED -> TapAnim.STARTLE
-            Mood.MISCHIEVOUS -> TapAnim.LEAP
+            Mood.SURPRISED -> TapAnim.REBOUND
+            Mood.MISCHIEVOUS -> TapAnim.LEAN
             else -> happyAnims.filter { it != lastTapAnim }.random()
         }
         return Pair(reaction, anim)
@@ -324,9 +394,20 @@ class GhostView @JvmOverloads constructor(
 
         updateMood(dt)
 
-        val k = 1f - exp(-12f * dt)
-        for (i in 0 until N) cur[i] += (tgt[i] - cur[i]) * k
+        // Face blends: eyes faster, brows medium, mouth gradual
+        val kEye = 1f - exp(-10f * dt)
+        val kBrow = 1f - exp(-8f * dt)
+        val kMouth = 1f - exp(-6.5f * dt)
+        for (i in 0 until N) {
+            val k = when (i) {
+                in 6..12 -> kMouth
+                in 17..22 -> kBrow
+                else -> kEye
+            }
+            cur[i] += (tgt[i] - cur[i]) * k
+        }
 
+        updateBrows(dt)
         updateBlink(dt)
 
         val asleepTarget = when (mood) {
@@ -336,7 +417,14 @@ class GhostView @JvmOverloads constructor(
         }
         sleepAmt += (asleepTarget - sleepAmt) * (1f - exp(-1.5f * dt))
 
-        // Continuous float: calmer and slower when drowsy
+        // Mood-linked body motion fades in/out smoothly and is off while dragging
+        val kBody = 1f - exp(-3f * dt)
+        val sagTarget = if (mood == Mood.SAD && !dragging) 1f else 0f
+        val swayTarget = if (mood == Mood.SLEEPY && !dragging) 1f else 0f
+        sagAmt += (sagTarget - sagAmt) * kBody
+        swayAmt += (swayTarget - swayAmt) * kBody
+
+        // Calm continuous float (slower and gentler when drowsy)
         floatPhase += dt * TWO_PI / (2.8f + 1.4f * sleepAmt)
         if (floatPhase > TWO_PI) floatPhase -= TWO_PI
         floatY = sin(floatPhase) * (3.2f - 1.7f * sleepAmt)
@@ -347,10 +435,45 @@ class GhostView @JvmOverloads constructor(
         updateDragTilt(dt)
     }
 
+    private fun onMoodEntered(m: Mood) {
+        when (m) {
+            Mood.SURPRISED -> {
+                browKickPos = -4.5f
+                browKickVel = 0f
+            }
+            Mood.ANGRY -> browTwitchT = 0f
+            Mood.MISCHIEVOUS -> {
+                mischT = 0f
+                if (glanceDir < 0f) mirrorFace()
+            }
+            else -> Unit
+        }
+    }
+
+    private fun swap(a: Int, b: Int) {
+        val t = tgt[a]
+        tgt[a] = tgt[b]
+        tgt[b] = t
+    }
+
+    /** Mirrors the asymmetric mischievous face so the smirk follows the lean direction. */
+    private fun mirrorFace() {
+        swap(2, 4)
+        swap(3, 5)
+        swap(8, 9)
+        swap(18, 20)
+        swap(19, 21)
+    }
+
     private fun updateMood(dt: Float) {
         if (overrideMood != null) {
             overrideTimer -= dt
-            if (overrideTimer <= 0f) overrideMood = null
+            if (overrideTimer <= 0f) {
+                val ended = overrideMood
+                overrideMood = null
+                // After being annoyed the ghost sulks for a moment
+                if (ended == Mood.ANGRY && !dragging) setOverride(Mood.SAD, 1.8f)
+            }
         }
 
         val override = overrideMood
@@ -364,6 +487,8 @@ class GhostView @JvmOverloads constructor(
         if (m != mood) {
             mood = m
             System.arraycopy(PRESETS[m.ordinal], 0, tgt, 0, N)
+            glanceT = -1f
+            onMoodEntered(m)
         }
 
         // Drowsiness: eyes close gradually before falling asleep
@@ -376,18 +501,72 @@ class GhostView @JvmOverloads constructor(
             tgt[5] = lid
         }
 
-        // Occasional spontaneous expression while awake
-        if (!dragging && overrideMood == null && idle < SLEEPY_AFTER) {
-            momentTimer -= dt
-            if (momentTimer <= 0f) {
-                momentTimer = Random.nextFloat() * 9f + 9f
-                when (Random.nextInt(3)) {
-                    0 -> setOverride(Mood.SAD, 2.8f)
-                    1 -> setOverride(Mood.MISCHIEVOUS, 2.2f)
-                    else -> setOverride(Mood.HAPPY, 2.2f)
-                }
+        // Mischief: look toward the lean, glance back briefly, then settle
+        if (mood == Mood.MISCHIEVOUS) {
+            mischT += dt
+            val d = glanceDir
+            tgt[16] = when {
+                mischT < 1.0f -> 2.8f * d
+                mischT < 1.5f -> -2.0f * d
+                else -> 1.4f * d
             }
         }
+
+        updateGlance(dt)
+    }
+
+    /** Rare side glance while relaxed. Never overlaps another expression or movement. */
+    private fun updateGlance(dt: Float) {
+        val calm = mood == Mood.RELAXED && overrideMood == null && !dragging && tapAnim == null
+        if (glanceT >= 0f) {
+            if (!calm) {
+                glanceT = -1f
+                tgt[16] = PRESETS[mood.ordinal][16]
+                return
+            }
+            glanceT += dt
+            val dur = 1.3f
+            if (glanceT >= dur) {
+                glanceT = -1f
+                tgt[16] = 0f
+            } else {
+                val p = glanceT / dur
+                val v = when {
+                    p < 0.25f -> p / 0.25f
+                    p > 0.75f -> (1f - p) / 0.25f
+                    else -> 1f
+                }
+                tgt[16] = glanceAutoDir * 2.6f * v
+            }
+        } else if (calm) {
+            glanceTimer -= dt
+            if (glanceTimer <= 0f) {
+                glanceTimer = Random.nextFloat() * 13f + 12f
+                glanceT = 0f
+                glanceAutoDir = if (Random.nextBoolean()) 1f else -1f
+            }
+        }
+    }
+
+    private fun updateBrows(dt: Float) {
+        val sdt = min(dt, 0.032f)
+        browKickVel += (-140f * browKickPos - 10f * browKickVel) * sdt
+        browKickPos += browKickVel * sdt
+
+        if (browTwitchT >= 0f) {
+            browTwitchT += dt
+            if (browTwitchT >= 0.8f) {
+                browTwitchT = -1f
+                browTwitch = 0f
+            } else {
+                browTwitch = sin(browTwitchT * TWO_PI * 3.5f) * 0.9f * (1f - browTwitchT / 0.8f)
+            }
+        }
+    }
+
+    private fun smooth(x: Float): Float {
+        val c = x.coerceIn(0f, 1f)
+        return c * c * (3f - 2f * c)
     }
 
     private fun updateBlink(dt: Float) {
@@ -397,27 +576,29 @@ class GhostView @JvmOverloads constructor(
             return
         }
         if (blinkT >= 0f) {
-            blinkT += dt / 0.17f
+            blinkT += dt / 0.2f
             if (blinkT >= 1f) {
                 blinkT = -1f
                 blinkOpen = 1f
                 if (doubleBlinkPending) {
                     doubleBlinkPending = false
                     blinkWasSecond = true
-                    nextBlink = 0.12f
+                    nextBlink = 0.14f
                 } else {
                     blinkWasSecond = false
-                    nextBlink = Random.nextFloat() * 4f + 2.5f
+                    nextBlink = Random.nextFloat() * 4.8f + 2.2f
                 }
             } else {
-                blinkOpen = abs(1f - 2f * blinkT)
+                // quick smooth close, slightly slower open
+                blinkOpen = if (blinkT < 0.4f) 1f - smooth(blinkT / 0.4f)
+                else smooth((blinkT - 0.4f) / 0.6f)
             }
         } else {
             blinkOpen = 1f
             nextBlink -= dt
             if (nextBlink <= 0f) {
                 blinkT = 0f
-                doubleBlinkPending = !blinkWasSecond && Random.nextFloat() < 0.2f
+                doubleBlinkPending = !blinkWasSecond && Random.nextFloat() < 0.15f
             }
         }
     }
@@ -426,15 +607,14 @@ class GhostView @JvmOverloads constructor(
         tapAnim = type
         tapT = 0f
         tapDur = when (type) {
-            TapAnim.HOP -> 0.62f
-            TapAnim.HIGH_JUMP -> 0.85f
-            TapAnim.DOUBLE_HOP -> 1.05f
-            TapAnim.WIGGLE_HOP -> 0.85f
-            TapAnim.LEAP -> 0.8f
-            TapAnim.STARTLE -> 0.5f
-            TapAnim.SHAKE -> 0.55f
+            TapAnim.HOP -> 0.6f
+            TapAnim.DOUBLE_HOP -> 1.0f
+            TapAnim.WIGGLE_HOP -> 0.8f
+            TapAnim.REBOUND -> 0.6f
+            TapAnim.LEAN -> 0.95f
+            TapAnim.SHAKE -> 0.6f
         }
-        tapJitter = 0.85f + Random.nextFloat() * 0.3f
+        tapJitter = 0.9f + Random.nextFloat() * 0.2f
         tapDir = if (Random.nextBoolean()) 1f else -1f
     }
 
@@ -453,24 +633,27 @@ class GhostView @JvmOverloads constructor(
         }
         val j = tapJitter
         when (type) {
-            TapAnim.HOP -> hop(u, 13f * j)
-            TapAnim.HIGH_JUMP -> hop(u, 24f * j)
+            TapAnim.HOP -> hop(u, 11f * j)
             TapAnim.DOUBLE_HOP ->
-                if (u < 0.5f) hop(u * 2f, 11f * j) else hop((u - 0.5f) * 2f, 8f * j)
+                if (u < 0.5f) hop(u * 2f, 8f * j) else hop((u - 0.5f) * 2f, 6f * j)
             TapAnim.WIGGLE_HOP -> {
-                hop(u, 13f * j)
-                tapRot = sin(u * PI_F * 5f) * 9f * (1f - u)
+                hop(u, 10f * j)
+                tapRot = sin(u * PI_F * 5f) * 6f * (1f - u)
             }
-            TapAnim.LEAP -> {
-                hop(u, 19f * j)
-                tapRot = tapDir * sin(PI_F * u) * 9f
-                tapX = tapDir * sin(PI_F * u) * 6f
+            // Surprise: short rebound, then a smaller settle bounce
+            TapAnim.REBOUND ->
+                if (u < 0.4f) hop(u / 0.4f, 8f * j) else hop((u - 0.4f) / 0.6f, 3f * j)
+            // Mischief: short sideways lean
+            TapAnim.LEAN -> {
+                val s = sin(PI_F * u)
+                tapRot = tapDir * s * 8f
+                tapX = tapDir * s * 3f
             }
-            TapAnim.STARTLE -> hop(u, 10f)
+            // Mild anger: very small shake
             TapAnim.SHAKE -> {
                 val decay = 1f - u
-                tapRot = sin(u * PI_F * 6f) * 8f * decay
-                tapX = sin(u * PI_F * 6f) * 2f * decay
+                tapRot = sin(u * PI_F * 6f) * 3f * decay
+                tapX = sin(u * PI_F * 6f) * 1.2f * decay
             }
         }
     }
@@ -510,12 +693,16 @@ class GhostView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         val s = min(width / LOGICAL_W, height / LOGICAL_H)
+        val moodY = sagAmt * 2.8f + swayAmt * 1.2f
+        val moodTilt = sin(time * TWO_PI / 4.5f) * 3.2f * swayAmt
+        val squash = jumpSq + sagAmt * 0.03f
+
         canvas.save()
         canvas.translate((width - LOGICAL_W * s) / 2f, (height - LOGICAL_H * s) / 2f)
         canvas.scale(s, s)
-        canvas.translate(tapX, GHOST_OFFSET_Y + floatY + jumpY)
-        canvas.rotate(idleTilt + dragTilt + tapRot, 50f, 90f)
-        canvas.scale(1f + jumpSq, (1f - jumpSq) * breath, 50f, 92f)
+        canvas.translate(tapX, GHOST_OFFSET_Y + floatY + jumpY + moodY)
+        canvas.rotate(idleTilt + dragTilt + tapRot + moodTilt, 50f, 90f)
+        canvas.scale(1f + squash, (1f - squash) * breath, 50f, 92f)
         drawGhost(canvas)
         canvas.restore()
     }
@@ -531,11 +718,14 @@ class GhostView @JvmOverloads constructor(
         val closed = cur[14]
         val open = if (mood == Mood.SLEEPING) 1f else blinkOpen
         val ryEff = max(0.7f, ry * open * (1f - 0.93f * closed))
-        val look = cur[16]
-        drawEye(c, 36f + look, 50f, rx, ry, ryEff, cur[2], cur[3], true)
-        drawEye(c, 64f + look, 50f, rx, ry, ryEff, cur[4], cur[5], false)
+        val lookX = cur[16]
+        val lookY = cur[24]
+        drawEye(c, 36f + lookX, 50f + lookY, rx, ry, ryEff, cur[2], cur[3], true)
+        drawEye(c, 64f + lookX, 50f + lookY, rx, ry, ryEff, cur[4], cur[5], false)
 
-        // Blush (drawn after the eyes so lids never cut it)
+        drawBrows(c, lookX)
+
+        // Blush (after the eyes so lids never cut it)
         blushPaint.alpha = (85f * cur[13]).toInt().coerceIn(0, 255)
         rect.set(17f, 56f, 31f, 64f)
         c.drawOval(rect, blushPaint)
@@ -555,8 +745,9 @@ class GhostView @JvmOverloads constructor(
         c.drawOval(rect, darkPaint)
 
         if (ryEff > ry * 0.55f) {
-            c.drawCircle(cx + rx * 0.35f, cy - ryEff * 0.4f, rx * 0.38f, glintPaint)
-            c.drawCircle(cx - rx * 0.4f, cy + ryEff * 0.4f, rx * 0.16f, glintPaint)
+            val gs = cur[23]
+            c.drawCircle(cx + rx * 0.35f, cy - ryEff * 0.4f, rx * 0.38f * gs, glintPaint)
+            c.drawCircle(cx - rx * 0.4f, cy + ryEff * 0.4f, rx * 0.16f * gs, glintPaint)
         }
 
         // Upper eyelid: body-colored polygon over the top of the eye
@@ -574,7 +765,7 @@ class GhostView @JvmOverloads constructor(
             c.drawPath(tmpPath, bodyPaint)
         }
 
-        // Lower lid pushed up by the cheeks: gives smiling eyes
+        // Lower lid pushed up by the cheeks: smiling eyes
         val lb = cur[15]
         if (lb > 0.01f) {
             val bottom = cy + ryEff
@@ -587,6 +778,30 @@ class GhostView @JvmOverloads constructor(
             tmpPath.close()
             c.drawPath(tmpPath, bodyPaint)
         }
+    }
+
+    private fun drawBrows(c: Canvas, lookX: Float) {
+        val a = cur[17]
+        if (a < 0.03f) return
+        browPaint.alpha = (255f * a).toInt().coerceIn(0, 255)
+        val kick = browKickPos
+        drawBrow(
+            c,
+            36f + lookX - 8.5f, cur[19] + kick,
+            36f + lookX + 6f, cur[18] + kick + browTwitch
+        )
+        drawBrow(
+            c,
+            64f + lookX + 8.5f, cur[21] + kick,
+            64f + lookX - 6f, cur[20] + kick + browTwitch
+        )
+    }
+
+    private fun drawBrow(c: Canvas, ox: Float, oy: Float, ix: Float, iy: Float) {
+        tmpPath.reset()
+        tmpPath.moveTo(ox, oy)
+        tmpPath.quadTo((ox + ix) / 2f, (oy + iy) / 2f - cur[22], ix, iy)
+        c.drawPath(tmpPath, browPaint)
     }
 
     private fun drawMouth(c: Canvas) {
