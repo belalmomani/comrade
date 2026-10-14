@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Cute Ghost</string>
+    <string name="main_title">الشبح اللطيف</string>
+    <string name="main_description">اضغط «إظهار الشبح» ليطفو فوق التطبيقات الأخرى. اسحبه بإصبعك لنقله، والمسه ليتفاعل معك.</string>
+    <string name="show_ghost">إظهار الشبح</string>
+    <string name="hide_ghost">إخفاء الشبح</string>
+    <string name="status_running">الحالة: الشبح ظاهر الآن</string>
+    <string name="status_stopped">الحالة: الشبح مخفي</string>
+    <string name="permission_title">صلاحية الظهور فوق التطبيقات</string>
+    <string name="permission_message">يحتاج التطبيق إلى صلاحية «الظهور فوق التطبيقات الأخرى» ليعرض الشبح. سنفتح لك إعدادات أندرويد، فعّل الخيار لتطبيق Cute Ghost ثم ارجع إلى التطبيق.</string>
+    <string name="open_settings">فتح الإعدادات</string>
+    <string name="cancel">إلغاء</string>
+    <string name="permission_not_granted">لم يتم منح الصلاحية، لا يمكن إظهار الشبح.</string>
+    <string name="settings_unavailable">تعذر فتح إعدادات الصلاحية على هذا الجهاز.</string>
+    <string name="start_failed">تعذر تشغيل الشبح. حاول مرة أخرى.</string>
+    <string name="notification_channel">الشبح العائم</string>
+    <string name="notification_text">الشبح يعمل فوق التطبيقات. افتح التطبيق لإخفائه.</string>
+</resources>
