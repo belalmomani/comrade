@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">Cute Ghost</string>
     <string name="main_title">الشبح اللطيف</string>
-    <string name="main_description">اضغط «إظهار الشبح» ليطفو فوق التطبيقات. يطلب الشبح الطعام كل ساعة، ويطعمه الطفل بسحب الطعام إلى فمه. ويمكن سحب الشبح لنقله.</string>
+    <string name="main_description">اضغط «إظهار الشبح» ليطفو فوق التطبيقات. يطلب الشبح الطعام كل ساعة والماء كل نصف ساعة، ويطعمه الطفل ويسقيه بسحب الطعام أو الكوب إلى فمه. ويمكن سحب الشبح لنقله.</string>
     <string name="show_ghost">إظهار الشبح</string>
     <string name="hide_ghost">إخفاء الشبح</string>
     <string name="status_running">الحالة: الشبح ظاهر الآن</string>
@@ -47,4 +47,7 @@
     <string name="feed_now">جرّب الإطعام الآن</string>
     <string name="feed_need_ghost">أظهر الشبح أولًا</string>
     <string name="main_privacy_note_local">هذا التطبيق لا يستخدم الإنترنت ولا الميكروفون ولا يجمع أي بيانات.</string>
+    <string name="drink_ask">أرجوك اسقني، أنا عطشان</string>
+    <string name="drink_thanks">آه، ارتحت! شكرًا</string>
+    <string name="drink_now">جرّب السقي الآن</string>
 </resources>

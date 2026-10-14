@@ -40,16 +40,20 @@ class MainActivity : Activity() {
             GhostOverlayService.stop(this)
             refreshStatusLater()
         }
-        findViewById<Button>(R.id.feedButton).setOnClickListener {
-            if (GhostOverlayService.isRunning) {
-                try {
-                    GhostOverlayService.feedNow(this)
-                } catch (e: RuntimeException) {
-                    Toast.makeText(this, R.string.start_failed, Toast.LENGTH_LONG).show()
-                }
-            } else {
-                Toast.makeText(this, R.string.feed_need_ghost, Toast.LENGTH_LONG).show()
-            }
+        findViewById<Button>(R.id.feedButton).setOnClickListener { testNeed(false) }
+        findViewById<Button>(R.id.drinkButton).setOnClickListener { testNeed(true) }
+    }
+
+    /** Test button: asks the running ghost to be hungry or thirsty right now. */
+    private fun testNeed(water: Boolean) {
+        if (!GhostOverlayService.isRunning) {
+            Toast.makeText(this, R.string.feed_need_ghost, Toast.LENGTH_LONG).show()
+            return
+        }
+        try {
+            GhostOverlayService.needNow(this, water)
+        } catch (e: RuntimeException) {
+            Toast.makeText(this, R.string.start_failed, Toast.LENGTH_LONG).show()
         }
     }
 

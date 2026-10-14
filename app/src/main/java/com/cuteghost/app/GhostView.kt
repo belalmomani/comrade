@@ -35,12 +35,12 @@ class GhostView @JvmOverloads constructor(
     enum class VoiceState { IDLE, LISTENING, THINKING, SPEAKING }
 
     /** Feeding game state driven by the service / feeding layer. */
-    enum class FeedState { NONE, HUNGRY, EATING }
+    enum class FeedState { NONE, HUNGRY, EATING, THIRSTY, DRINKING }
 
     // Order must match PRESETS
     private enum class Mood {
         HAPPY, SURPRISED, SLEEPY, SAD, MISCHIEVOUS, ANGRY, RELAXED, SLEEPING,
-        LISTENING, THINKING, TALKING, HUNGRY, EATING
+        LISTENING, THINKING, TALKING, HUNGRY, EATING, THIRSTY, DRINKING, RELIEVED
     }
     private enum class TapAnim { HOP, DOUBLE_HOP, WIGGLE_HOP, REBOUND, LEAN, SHAKE }
 
@@ -166,6 +166,30 @@ class GhostView @JvmOverloads constructor(
                 0f, 1f, 0f, 0.5f, 0f,
                 0.45f, 34f, 34.5f, 34f, 34.5f, 2f,
                 1.15f, 0f
+            ),
+            // THIRSTY: pleading eyes, small open mouth with the tongue showing a little
+            floatArrayOf(
+                8f, 10f, 0f, 0.2f, 0f, 0.2f,
+                45.5f, 54.5f, 66.5f, 66.5f, 64f, 73f,
+                0.55f, 0.7f, 0f, 0f, 0f,
+                0.75f, 33.5f, 36f, 33.5f, 36f, 0.6f,
+                1.4f, 1.5f
+            ),
+            // DRINKING: relaxed half-closed eyes, small mouth that gulps (animated on top)
+            floatArrayOf(
+                7.5f, 9f, 0.3f, 0.3f, 0.3f, 0.3f,
+                46f, 54f, 65.5f, 65.5f, 63.5f, 71f,
+                0f, 1f, 0f, 0.3f, 0f,
+                0.35f, 34.5f, 35f, 34.5f, 35f, 1.5f,
+                1f, 0f
+            ),
+            // RELIEVED: happy and relaxed after drinking, soft closed-ish eyes, wide smile
+            floatArrayOf(
+                7.5f, 9f, 0.35f, 0.35f, 0.35f, 0.35f,
+                42f, 58f, 64f, 64f, 65.5f, 75.5f,
+                0f, 1f, 0f, 0.4f, 0f,
+                0.3f, 34.5f, 35f, 34.5f, 35f, 2f,
+                0.9f, 0f
             )
         )
     }
@@ -225,6 +249,7 @@ class GhostView @JvmOverloads constructor(
     // ----- Feeding game -----
     private var feedState = FeedState.NONE
     private var chewPhase = 0f
+    private var gulpPhase = 0f
 
     // ----- Tap animation (only one at a time) -----
     private var tapAnim: TapAnim? = null
@@ -359,6 +384,11 @@ class GhostView @JvmOverloads constructor(
 
     /** A quick tap: picks a reaction (happy / surprised / mischievous) with a matching move. */
     fun react() {
+        // Taps do not interrupt feeding or watering
+        if (feedState != FeedState.NONE) {
+            idle = 0f
+            return
+        }
         val now = SystemClock.uptimeMillis()
         tapStreak = if (now - lastTapAt < 1200L) tapStreak + 1 else 1
         lastTapAt = now
@@ -434,12 +464,19 @@ class GhostView @JvmOverloads constructor(
         feedState = state
         idle = 0f
         if (state != FeedState.NONE) overrideMood = null
+        // No other movement overlaps eating or drinking
+        if (state == FeedState.EATING || state == FeedState.DRINKING) tapAnim = null
     }
 
     /** Happy hop and smile after a full meal. */
     fun showFed() {
         setOverride(Mood.HAPPY, 2.5f)
         if (tapAnim == null) startTapAnim(TapAnim.HOP)
+    }
+
+    /** Happy, relaxed face after a drink. */
+    fun showRelieved() {
+        setOverride(Mood.RELIEVED, 2.6f)
     }
 
     /** Mouth centre in this view's pixel coordinates (used by the feeding game). */
@@ -524,10 +561,15 @@ class GhostView @JvmOverloads constructor(
         voiceTilt += (voiceTiltTarget - voiceTilt) * (1f - exp(-4f * dt))
         talkPhase += dt * TWO_PI * 3.6f * (0.8f + 0.4f * sin(time * 1.7f))
         chewPhase += dt * TWO_PI * 2.2f
+        gulpPhase += dt * TWO_PI * 1.3f
         val talkTarget = when (mood) {
             Mood.TALKING ->
                 (0.15f + 0.85f * abs(sin(talkPhase))) * (0.7f + 0.3f * sin(time * 2.3f + 1f))
             Mood.EATING -> 0.1f + 0.9f * abs(sin(chewPhase))
+            Mood.DRINKING -> {
+                val gulp = max(0f, sin(gulpPhase))
+                0.2f + 0.8f * gulp * gulp
+            }
             else -> 0f
         }
         talkOpen += (talkTarget - talkOpen) * (1f - exp(-18f * dt))
@@ -541,7 +583,7 @@ class GhostView @JvmOverloads constructor(
 
         // Mood-linked body motion fades in/out smoothly and is off while dragging
         val kBody = 1f - exp(-3f * dt)
-        val sagTarget = if ((mood == Mood.SAD || mood == Mood.HUNGRY) && !dragging) 1f else 0f
+        val sagTarget = if ((mood == Mood.SAD || mood == Mood.HUNGRY || mood == Mood.THIRSTY) && !dragging) 1f else 0f
         val swayTarget = if (mood == Mood.SLEEPY && !dragging) 1f else 0f
         sagAmt += (sagTarget - sagAmt) * kBody
         swayAmt += (swayTarget - swayAmt) * kBody
@@ -606,7 +648,9 @@ class GhostView @JvmOverloads constructor(
             voiceState == VoiceState.THINKING -> Mood.THINKING
             voiceState == VoiceState.SPEAKING -> Mood.TALKING
             feedState == FeedState.EATING -> Mood.EATING
+            feedState == FeedState.DRINKING -> Mood.DRINKING
             feedState == FeedState.HUNGRY -> Mood.HUNGRY
+            feedState == FeedState.THIRSTY -> Mood.THIRSTY
             override != null -> override
             idle >= SLEEP_AFTER -> Mood.SLEEPING
             idle >= SLEEPY_AFTER -> Mood.SLEEPY
@@ -821,7 +865,7 @@ class GhostView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         val s = min(width / LOGICAL_W, height / LOGICAL_H)
-        val chewing = mood == Mood.EATING
+        val chewing = mood == Mood.EATING || mood == Mood.DRINKING
         val moodY = sagAmt * 2.8f + swayAmt * 1.2f - talkOpen * (if (chewing) -1.4f else 0.9f)
         val moodTilt = sin(time * TWO_PI / 4.5f) * 3.2f * swayAmt + voiceTilt
         val squash = jumpSq + sagAmt * 0.03f + (if (chewing) talkOpen * 0.02f else 0f)

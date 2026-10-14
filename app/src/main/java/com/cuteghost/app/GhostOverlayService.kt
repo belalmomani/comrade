@@ -40,20 +40,24 @@ class GhostOverlayService : Service(), FeedView.Listener {
         private const val KEY_X = "pos_x"
         private const val KEY_Y = "pos_y"
         private const val KEY_NEXT_HUNGER = "next_hunger_at"
+        private const val KEY_NEXT_THIRST = "next_thirst_at"
         private const val GHOST_WIDTH_DP = 100
         private const val GHOST_HEIGHT_DP = 128
         private const val MARGIN_DP = 12
         private const val TAP_MAX_MS = 450L
 
-        // Feeding
+        // Needs: food every hour, water every half hour
         private const val HUNGER_INTERVAL_MS = 60L * 60L * 1000L
-        private const val HUNGER_CHECK_MS = 30_000L
+        private const val THIRST_INTERVAL_MS = 30L * 60L * 1000L
+        private const val MIN_GAP_MS = 5L * 60L * 1000L
+        private const val NEEDS_CHECK_MS = 30_000L
         private const val FIRST_CHECK_DELAY_MS = 20_000L
         private const val FEED_TIMEOUT_MS = 3L * 60L * 1000L
         private const val FEED_WINDOW_WIDTH_DP = 240
         private const val BUBBLE_HEIGHT_DP = 44
         private const val TRAY_HEIGHT_DP = 90
         private const val ACTION_FEED_NOW = "com.companion.theghost.FEED_NOW"
+        private const val EXTRA_WATER = "water"
 
         fun start(context: Context) {
             val intent = Intent(context, GhostOverlayService::class.java)
@@ -68,9 +72,11 @@ class GhostOverlayService : Service(), FeedView.Listener {
             context.stopService(Intent(context, GhostOverlayService::class.java))
         }
 
-        /** Asks the running ghost to be hungry right now (used for testing). */
-        fun feedNow(context: Context) {
-            val intent = Intent(context, GhostOverlayService::class.java).setAction(ACTION_FEED_NOW)
+        /** Asks the running ghost to be hungry or thirsty right now (used for testing). */
+        fun needNow(context: Context, water: Boolean) {
+            val intent = Intent(context, GhostOverlayService::class.java)
+                .setAction(ACTION_FEED_NOW)
+                .putExtra(EXTRA_WATER, water)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
@@ -88,14 +94,15 @@ class GhostOverlayService : Service(), FeedView.Listener {
     private var voice: VoiceCompanion? = null
 
     private var feeding = false
+    private var currentNeed: FeedView.Mode? = null
     private var userDragging = false
     private var origX = 0
     private var origY = 0
 
-    private val hungerCheck = object : Runnable {
+    private val needsCheck = object : Runnable {
         override fun run() {
-            checkHunger()
-            handler.postDelayed(this, HUNGER_CHECK_MS)
+            checkNeeds()
+            handler.postDelayed(this, NEEDS_CHECK_MS)
         }
     }
 
@@ -122,7 +129,11 @@ class GhostOverlayService : Service(), FeedView.Listener {
             return START_NOT_STICKY
         }
         isRunning = true
-        if (intent?.action == ACTION_FEED_NOW) startFeeding()
+        val action = intent?.action
+        if (action == ACTION_FEED_NOW) {
+            val water = intent?.getBooleanExtra(EXTRA_WATER, false) == true
+            startFeeding(if (water) FeedView.Mode.WATER else FeedView.Mode.FOOD)
+        }
         return START_NOT_STICKY
     }
 
@@ -254,8 +265,8 @@ class GhostOverlayService : Service(), FeedView.Listener {
                     }
                 })
             }
-            handler.removeCallbacks(hungerCheck)
-            handler.postDelayed(hungerCheck, FIRST_CHECK_DELAY_MS)
+            handler.removeCallbacks(needsCheck)
+            handler.postDelayed(needsCheck, FIRST_CHECK_DELAY_MS)
             true
         } catch (e: RuntimeException) {
             // BadTokenException / SecurityException when permission is missing or revoked
@@ -311,7 +322,7 @@ class GhostOverlayService : Service(), FeedView.Listener {
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    // The ghost cannot be moved while the feeding game is open
+                    // The ghost cannot be moved while feeding / watering is open
                     if (!feeding) {
                         val dx = event.rawX - downRawX
                         val dy = event.rawY - downRawY
@@ -362,23 +373,37 @@ class GhostOverlayService : Service(), FeedView.Listener {
         }
     }
 
-    // ---------- Feeding ----------
+    // ---------- Food and water needs ----------
 
     private fun prefs() = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    private fun checkHunger() {
+    /** Never two sessions at once: the other need waits until this one is finished. */
+    private fun checkNeeds() {
         if (feeding || userDragging || rootView == null) return
         val now = System.currentTimeMillis()
-        val next = prefs().getLong(KEY_NEXT_HUNGER, 0L)
-        if (next == 0L) {
-            prefs().edit().putLong(KEY_NEXT_HUNGER, now + HUNGER_INTERVAL_MS).apply()
-            return
+        val p = prefs()
+        var nextFood = p.getLong(KEY_NEXT_HUNGER, 0L)
+        var nextWater = p.getLong(KEY_NEXT_THIRST, 0L)
+        if (nextFood == 0L) {
+            nextFood = now + HUNGER_INTERVAL_MS
+            p.edit().putLong(KEY_NEXT_HUNGER, nextFood).apply()
         }
-        if (now >= next) startFeeding()
+        if (nextWater == 0L) {
+            nextWater = now + THIRST_INTERVAL_MS
+            p.edit().putLong(KEY_NEXT_THIRST, nextWater).apply()
+        }
+        val foodDue = now >= nextFood
+        val waterDue = now >= nextWater
+        when {
+            foodDue && waterDue ->
+                startFeeding(if (nextFood <= nextWater) FeedView.Mode.FOOD else FeedView.Mode.WATER)
+            foodDue -> startFeeding(FeedView.Mode.FOOD)
+            waterDue -> startFeeding(FeedView.Mode.WATER)
+        }
     }
 
-    /** Expands the window around the ghost (bubble above, food tray below). */
-    private fun startFeeding() {
+    /** Expands the window around the ghost (text above, tray below). */
+    private fun startFeeding(mode: FeedView.Mode) {
         val params = layoutParams ?: return
         val ghost = ghostView ?: return
         val feed = feedView ?: return
@@ -408,9 +433,12 @@ class GhostOverlayService : Service(), FeedView.Listener {
         updateWindow()
 
         feeding = true
+        currentNeed = mode
         feed.visibility = View.VISIBLE
-        feed.begin(winW, winH, bubbleH, trayH)
-        ghost.setFeedState(GhostView.FeedState.HUNGRY)
+        feed.begin(winW, winH, bubbleH, trayH, mode)
+        ghost.setFeedState(
+            if (mode == FeedView.Mode.FOOD) GhostView.FeedState.HUNGRY else GhostView.FeedState.THIRSTY
+        )
         handler.removeCallbacks(feedTimeout)
         handler.postDelayed(feedTimeout, FEED_TIMEOUT_MS)
     }
@@ -442,9 +470,20 @@ class GhostOverlayService : Service(), FeedView.Listener {
             )
             updateWindow()
         }
-        prefs().edit()
-            .putLong(KEY_NEXT_HUNGER, System.currentTimeMillis() + HUNGER_INTERVAL_MS)
-            .apply()
+
+        // Next request for this need, and a quiet gap before the other need
+        val now = System.currentTimeMillis()
+        val p = prefs()
+        val editor = p.edit()
+        if (currentNeed == FeedView.Mode.WATER) {
+            editor.putLong(KEY_NEXT_THIRST, now + THIRST_INTERVAL_MS)
+            editor.putLong(KEY_NEXT_HUNGER, maxOf(p.getLong(KEY_NEXT_HUNGER, 0L), now + MIN_GAP_MS))
+        } else {
+            editor.putLong(KEY_NEXT_HUNGER, now + HUNGER_INTERVAL_MS)
+            editor.putLong(KEY_NEXT_THIRST, maxOf(p.getLong(KEY_NEXT_THIRST, 0L), now + MIN_GAP_MS))
+        }
+        editor.apply()
+        currentNeed = null
     }
 
     // ---------- Saved position ----------

@@ -20,14 +20,17 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Feeding game layer drawn above the ghost: speech bubble, a small tray of cartoon foods,
- * dragging, and the "eating" logic. It only consumes touches that start on a food item,
- * so taps on the ghost still reach the ghost.
+ * Feeding / watering layer drawn above the ghost. Everything is drawn on a fully transparent
+ * background (no panel): a text line, then cartoon foods or a water cup that the child drags
+ * to the ghost's mouth. It only consumes touches that start on an item, so taps still reach
+ * the ghost.
  */
 class FeedView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
 ) : View(context, attrs) {
+
+    enum class Mode { FOOD, WATER }
 
     interface Listener {
         fun onFeedingEnded(fed: Boolean)
@@ -36,22 +39,24 @@ class FeedView @JvmOverloads constructor(
     var listener: Listener? = null
     var ghost: GhostView? = null
 
-    private enum class Kind { APPLE, BANANA, COOKIE }
+    private enum class Kind { APPLE, BANANA, COOKIE, CUP }
 
     private class Food(val kind: Kind) {
         var x = 0f
         var y = 0f
         var homeX = 0f
         var homeY = 0f
-        var eaten = 0f
+        var eaten = 0f   // eaten / drunk fraction 0..1
         var appear = 0f
         var alpha = 1f
         var gone = false
         var returning = false
+        var tilt = 0f    // cup tilt in degrees
     }
 
     private val d = resources.displayMetrics.density
     private val foods = ArrayList<Food>()
+    private var mode = Mode.FOOD
     private var active = false
     private var fed = false
     private var fedFood: Food? = null
@@ -59,6 +64,7 @@ class FeedView @JvmOverloads constructor(
     private var dragDx = 0f
     private var dragDy = 0f
     private var eatingNow = false
+    private var cupDir = 1f
     private var bubbleText = ""
     private var finishTimer = -1f
     private var lastTime = 0L
@@ -81,10 +87,18 @@ class FeedView @JvmOverloads constructor(
         textAlign = Paint.Align.CENTER
         isFakeBoldText = true
     }
-    private val panelPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    // White outline keeps the text readable on any background without a box behind it
+    private val textOutlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+        style = Paint.Style.STROKE
+        strokeJoin = Paint.Join.ROUND
+        strokeWidth = 5f * resources.displayMetrics.density
+    }
     private val rect = RectF()
     private val path = Path()
-    private val layerRect = RectF(-34f, -34f, 34f, 34f)
+    private val layerRect = RectF(-40f, -40f, 40f, 40f)
 
     private val appleShader = RadialGradient(
         -7f, -2f, 32f,
@@ -102,16 +116,18 @@ class FeedView @JvmOverloads constructor(
     // Session control (called by the service)
     // =====================================================================
 
-    fun begin(w: Int, h: Int, bubbleHeight: Int, trayHeight: Int) {
+    fun begin(w: Int, h: Int, bubbleHeight: Int, trayHeight: Int, newMode: Mode) {
         winW = w.toFloat()
         winH = h.toFloat()
         bubbleH = bubbleHeight.toFloat()
         trayH = trayHeight.toFloat()
+        mode = newMode
 
         foods.clear()
-        for ((i, kind) in Kind.values().withIndex()) {
+        val kinds = if (mode == Mode.FOOD) listOf(Kind.APPLE, Kind.BANANA, Kind.COOKIE) else listOf(Kind.CUP)
+        for ((i, kind) in kinds.withIndex()) {
             val f = Food(kind)
-            f.homeX = winW * (2 * i + 1) / 6f
+            f.homeX = winW * (2 * i + 1) / (2f * kinds.size)
             f.homeY = winH - trayH / 2f
             f.x = f.homeX
             f.y = f.homeY
@@ -124,7 +140,7 @@ class FeedView @JvmOverloads constructor(
         dragFood = null
         eatingNow = false
         finishTimer = -1f
-        bubbleText = context.getString(R.string.feed_ask)
+        bubbleText = context.getString(if (mode == Mode.FOOD) R.string.feed_ask else R.string.drink_ask)
         lastTime = SystemClock.uptimeMillis()
         invalidate()
     }
@@ -140,7 +156,7 @@ class FeedView @JvmOverloads constructor(
     }
 
     // =====================================================================
-    // Touch: only foods are draggable; everything else passes through
+    // Touch: only items are draggable; everything else passes through
     // =====================================================================
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
@@ -165,10 +181,10 @@ class FeedView @JvmOverloads constructor(
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 val f = dragFood ?: return false
                 dragFood = null
-                f.returning = true // moved away from the mouth: it goes back and is not eaten
+                f.returning = true // moved away from the mouth: it goes back and nothing happens
                 if (eatingNow) {
                     eatingNow = false
-                    ghost?.setFeedState(GhostView.FeedState.HUNGRY)
+                    ghost?.setFeedState(waitingState())
                 }
                 invalidate()
                 return true
@@ -177,11 +193,18 @@ class FeedView @JvmOverloads constructor(
         return false
     }
 
+    private fun waitingState() =
+        if (mode == Mode.FOOD) GhostView.FeedState.HUNGRY else GhostView.FeedState.THIRSTY
+
+    private fun activeState() =
+        if (mode == Mode.FOOD) GhostView.FeedState.EATING else GhostView.FeedState.DRINKING
+
+    /** Generous touch target so small fingers can grab items easily. */
     private fun hit(x: Float, y: Float): Food? {
         for (i in foods.indices.reversed()) {
             val f = foods[i]
             if (f.gone || f.appear < 0.6f) continue
-            if (hypot(f.x - x, f.y - y) <= 32f * d) return f
+            if (hypot(f.x - x, f.y - y) <= 40f * d) return f
         }
         return null
     }
@@ -215,33 +238,54 @@ class FeedView @JvmOverloads constructor(
             g.mouthPoint(mouth)
             val mx = g.left + mouth[0]
             val my = g.top + mouth[1]
-            val limit = (if (eatingNow) 36f else 28f) * d
+            // Start a little before touching the mouth, stop a bit further away (no flicker)
+            val limit = (if (eatingNow) 42f else 32f) * d
             near = hypot(drag.x - mx, drag.y - my) <= limit
+            if (near) cupDir = if (drag.x < mx) 1f else -1f
         }
         if (near != eatingNow) {
             eatingNow = near
-            g?.setFeedState(if (near) GhostView.FeedState.EATING else GhostView.FeedState.HUNGRY)
+            g?.setFeedState(if (near) activeState() else waitingState())
         }
 
-        // Eating only progresses while the food is held at the mouth
+        // The cup tilts toward the mouth only while it is at the mouth, then returns upright
+        for (f in foods) {
+            if (f.kind == Kind.CUP) {
+                val target = if (f === dragFood && eatingNow) cupDir * 38f else 0f
+                f.tilt += (target - f.tilt) * (1f - exp(-10f * dt))
+            }
+        }
+
+        // Eating / drinking only progresses while the item is held at the mouth
         if (eatingNow && drag != null) {
-            drag.eaten += dt / 2.4f
+            drag.eaten += dt / (if (drag.kind == Kind.CUP) 2.6f else 2.4f)
             if (drag.eaten >= 1f) {
                 drag.eaten = 1f
-                drag.gone = true
                 fedFood = drag
                 dragFood = null
                 eatingNow = false
                 fed = true
                 finishTimer = 0f
-                bubbleText = context.getString(R.string.feed_thanks)
-                g?.setFeedState(GhostView.FeedState.NONE)
-                g?.showFed()
+                if (drag.kind == Kind.CUP) {
+                    drag.returning = true // empty cup glides back upright
+                    bubbleText = context.getString(R.string.drink_thanks)
+                    g?.setFeedState(GhostView.FeedState.NONE)
+                    g?.showRelieved()
+                } else {
+                    drag.gone = true
+                    bubbleText = context.getString(R.string.feed_thanks)
+                    g?.setFeedState(GhostView.FeedState.NONE)
+                    g?.showFed()
+                }
             }
         }
 
         if (finishTimer >= 0f) {
             finishTimer += dt
+            val cup = fedFood
+            if (cup != null && cup.kind == Kind.CUP) {
+                cup.alpha = (1f - (finishTimer - 2.0f) / 0.6f).coerceIn(0f, 1f)
+            }
             if (finishTimer >= 2.6f) {
                 finishTimer = -1f
                 active = false
@@ -251,7 +295,7 @@ class FeedView @JvmOverloads constructor(
     }
 
     // =====================================================================
-    // Drawing
+    // Drawing (transparent background: no panel, no bubble box)
     // =====================================================================
 
     override fun onDraw(canvas: Canvas) {
@@ -261,77 +305,49 @@ class FeedView @JvmOverloads constructor(
         lastTime = now
         if (active) step(dt)
 
-        drawBubble(canvas)
-        drawTray(canvas)
-        for (f in foods) if (f !== dragFood) drawFoodItem(canvas, f)
-        dragFood?.let { drawFoodItem(canvas, it) }
+        drawText(canvas)
+        for (f in foods) if (f !== dragFood) drawItem(canvas, f)
+        dragFood?.let { drawItem(canvas, it) }
 
         if (active) postInvalidateOnAnimation()
     }
 
-    private fun drawBubble(c: Canvas) {
-        val cx = winW / 2f
-        val bw = min(winW - 8f * d, 220f * d)
-        val left = cx - bw / 2f
-        rect.set(left, 4f * d, left + bw, bubbleH - 4f * d)
-
-        fillPaint.shader = null
-        fillPaint.style = Paint.Style.FILL
-        fillPaint.color = Color.parseColor("#F2FFFFFF")
-        c.drawRoundRect(rect, 14f * d, 14f * d, fillPaint)
-        linePaint.color = Color.parseColor("#D8D2F0")
-        linePaint.strokeWidth = 1.5f * d
-        c.drawRoundRect(rect, 14f * d, 14f * d, linePaint)
-
-        // Tail pointing at the ghost's head
-        val g = ghost
-        val gx = (g?.let { it.left + it.width / 2f } ?: cx).coerceIn(left + 18f * d, left + bw - 18f * d)
-        path.reset()
-        path.moveTo(gx - 7f * d, rect.bottom - 1f)
-        path.lineTo(gx + 7f * d, rect.bottom - 1f)
-        path.lineTo(gx, rect.bottom + 9f * d)
-        path.close()
-        c.drawPath(path, fillPaint)
-
-        textPaint.textSize = 15f * d
-        while (textPaint.measureText(bubbleText) > bw - 20f * d && textPaint.textSize > 9f * d) {
-            textPaint.textSize = textPaint.textSize - 0.5f * d
+    private fun drawText(c: Canvas) {
+        var size = 17f * d
+        textPaint.textSize = size
+        textOutlinePaint.textSize = size
+        val maxW = winW - 16f * d
+        while (textPaint.measureText(bubbleText) > maxW && size > 9f * d) {
+            size -= 0.5f * d
+            textPaint.textSize = size
+            textOutlinePaint.textSize = size
         }
-        val y = rect.centerY() - (textPaint.ascent() + textPaint.descent()) / 2f
+        val cx = winW / 2f
+        val cy = bubbleH + 10f * d // just above the ghost's head
+        val y = cy - (textPaint.ascent() + textPaint.descent()) / 2f
+        c.drawText(bubbleText, cx, y, textOutlinePaint)
         c.drawText(bubbleText, cx, y, textPaint)
     }
 
-    private fun drawTray(c: Canvas) {
-        val fade = if (finishTimer >= 0f) max(0f, 1f - finishTimer / 0.6f) else 1f
-        if (fade <= 0f) return
-        rect.set(6f * d, winH - trayH + 4f * d, winW - 6f * d, winH - 4f * d)
-        panelPaint.style = Paint.Style.FILL
-        panelPaint.color = Color.parseColor("#B3FFFFFF")
-        panelPaint.alpha = (179f * fade).toInt()
-        c.drawRoundRect(rect, 18f * d, 18f * d, panelPaint)
-        panelPaint.style = Paint.Style.STROKE
-        panelPaint.strokeWidth = 1.5f * d
-        panelPaint.color = Color.parseColor("#D8D2F0")
-        panelPaint.alpha = (255f * fade).toInt()
-        c.drawRoundRect(rect, 18f * d, 18f * d, panelPaint)
-    }
-
-    private fun drawFoodItem(c: Canvas, f: Food) {
+    private fun drawItem(c: Canvas, f: Food) {
         if (f.gone || f.appear <= 0f) return
+        val isCup = f.kind == Kind.CUP
         val bob = if (f !== dragFood && !f.returning && !fed) sin(clock * 3f + f.homeX * 0.01f) * 2f * d else 0f
-        val e = f.eaten
-        val lift = if (f === dragFood) 1.12f else 1f
-        val sc = f.appear * (1f - 0.88f * e) * lift * (54f * d / 56f)
-        val a = f.alpha * (1f - 0.4f * e)
+        val lift = if (f === dragFood) 1.1f else 1f
+        val shrink = if (isCup) 1f else 1f - 0.88f * f.eaten
+        val sc = f.appear * shrink * lift * (60f * d / 56f)
+        val a = f.alpha * (if (isCup) 1f else 1f - 0.4f * f.eaten)
 
         val saved = c.save()
         c.translate(f.x, f.y + bob)
+        if (isCup) c.rotate(f.tilt)
         c.scale(sc, sc)
         if (a < 0.99f) c.saveLayerAlpha(layerRect, (a * 255f).toInt().coerceIn(0, 255))
         when (f.kind) {
             Kind.APPLE -> drawApple(c)
             Kind.BANANA -> drawBanana(c)
             Kind.COOKIE -> drawCookie(c)
+            Kind.CUP -> drawCup(c, 1f - f.eaten)
         }
         c.restoreToCount(saved)
     }
@@ -397,5 +413,57 @@ class FeedView @JvmOverloads constructor(
             c.drawOval(rect, fillPaint)
             i += 2
         }
+    }
+
+    /** Cartoon glass of water; [level] 1 = full, 0 = empty. */
+    private fun drawCup(c: Canvas, level: Float) {
+        fillPaint.style = Paint.Style.FILL
+        fillPaint.shader = null
+
+        // Glass body
+        path.reset()
+        path.moveTo(-17f, -22f)
+        path.lineTo(17f, -22f)
+        path.lineTo(13f, 22f)
+        path.quadTo(0f, 28f, -13f, 22f)
+        path.close()
+        fillPaint.color = Color.parseColor("#66DFF3FF")
+        c.drawPath(path, fillPaint)
+
+        // Water
+        if (level > 0.02f) {
+            val ys = 22f - 36f * level
+            val hw = 17f - 4f * ((ys + 22f) / 44f)
+            path.reset()
+            path.moveTo(-hw, ys)
+            path.lineTo(hw, ys)
+            path.lineTo(13f, 22f)
+            path.quadTo(0f, 28f, -13f, 22f)
+            path.close()
+            fillPaint.color = Color.parseColor("#E64FC3F7")
+            c.drawPath(path, fillPaint)
+            rect.set(-hw, ys - 2.2f, hw, ys + 2.2f)
+            fillPaint.color = Color.parseColor("#81D4FA")
+            c.drawOval(rect, fillPaint)
+        }
+
+        // Outline and rim
+        linePaint.style = Paint.Style.STROKE
+        linePaint.color = Color.parseColor("#3D7EB8")
+        linePaint.strokeWidth = 2.4f
+        path.reset()
+        path.moveTo(-17f, -22f)
+        path.lineTo(-13f, 22f)
+        path.quadTo(0f, 28f, 13f, 22f)
+        path.lineTo(17f, -22f)
+        c.drawPath(path, linePaint)
+        rect.set(-17f, -24.5f, 17f, -19.5f)
+        linePaint.strokeWidth = 2f
+        c.drawOval(rect, linePaint)
+
+        // Shine
+        rect.set(-13f, -16f, -9.5f, 10f)
+        fillPaint.color = Color.parseColor("#99FFFFFF")
+        c.drawRoundRect(rect, 2f, 2f, fillPaint)
     }
 }

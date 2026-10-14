@@ -68,6 +68,14 @@
         android:text="@string/feed_now"
         android:textSize="15sp" />
 
+    <Button
+        android:id="@+id/drinkButton"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="12dp"
+        android:text="@string/drink_now"
+        android:textSize="15sp" />
+
     <TextView
         android:id="@+id/privacyNote"
         android:layout_width="match_parent"
