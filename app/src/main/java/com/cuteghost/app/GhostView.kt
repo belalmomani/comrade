@@ -14,6 +14,7 @@ import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.View
 import android.view.animation.LinearInterpolator
+import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
@@ -30,8 +31,14 @@ class GhostView @JvmOverloads constructor(
     attrs: AttributeSet? = null
 ) : View(context, attrs) {
 
+    /** Conversation state driven by the voice companion. */
+    enum class VoiceState { IDLE, LISTENING, THINKING, SPEAKING }
+
     // Order must match PRESETS
-    private enum class Mood { HAPPY, SURPRISED, SLEEPY, SAD, MISCHIEVOUS, ANGRY, RELAXED, SLEEPING }
+    private enum class Mood {
+        HAPPY, SURPRISED, SLEEPY, SAD, MISCHIEVOUS, ANGRY, RELAXED, SLEEPING,
+        LISTENING, THINKING, TALKING
+    }
     private enum class TapAnim { HOP, DOUBLE_HOP, WIGGLE_HOP, REBOUND, LEAN, SHAKE }
 
     companion object {
@@ -116,6 +123,30 @@ class GhostView @JvmOverloads constructor(
                 0f, 0.8f, 1f, 0f, 0f,
                 0f, 37f, 37.8f, 37f, 37.8f, 0.8f,
                 1f, 1f
+            ),
+            // LISTENING: attentive, bigger eyes, raised soft brows, gentle smile
+            floatArrayOf(
+                8.3f, 10.2f, 0f, 0f, 0f, 0f,
+                45f, 55f, 64.5f, 64.5f, 66f, 71f,
+                0f, 1f, 0f, 0.1f, 0f,
+                0.6f, 32f, 32.8f, 32f, 32.8f, 2f,
+                1.25f, -0.5f
+            ),
+            // THINKING: eyes up and aside, one brow raised, small "hmm" mouth
+            floatArrayOf(
+                7.5f, 9f, 0.1f, 0.1f, 0f, 0f,
+                47f, 53f, 66.5f, 66f, 65.5f, 69f,
+                0f, 0.9f, 0f, 0f, 2.4f,
+                0.7f, 35.5f, 35.5f, 31.5f, 31f, 1.5f,
+                1f, -2.2f
+            ),
+            // TALKING: happy face; the mouth is animated on top while speaking
+            floatArrayOf(
+                7.5f, 9f, 0f, 0f, 0f, 0f,
+                44f, 56f, 64f, 64f, 65f, 72f,
+                0f, 1f, 0f, 0.2f, 0f,
+                0.35f, 34f, 34.5f, 34f, 34.5f, 2f,
+                1.15f, 0f
             )
         )
     }
@@ -162,6 +193,15 @@ class GhostView @JvmOverloads constructor(
     private var breath = 1f
     private var sagAmt = 0f   // sad: body lowers slightly
     private var swayAmt = 0f  // sleepy: slow sway
+
+    // ----- Voice conversation -----
+    private var voiceState = VoiceState.IDLE
+    private var voiceLevelTarget = 0f
+    private var voiceLevel = 0f
+    private var voiceTilt = 0f
+    private var listenDir = 1f
+    private var talkOpen = 0f
+    private var talkPhase = 0f
 
     // ----- Tap animation (only one at a time) -----
     private var tapAnim: TapAnim? = null
@@ -349,6 +389,23 @@ class GhostView @JvmOverloads constructor(
         setOverride(Mood.HAPPY, 1.0f)
     }
 
+    /** Conversation state from the voice companion (listening, thinking, speaking). */
+    fun setVoiceState(state: VoiceState) {
+        voiceState = state
+        idle = 0f
+        if (state != VoiceState.IDLE) overrideMood = null
+    }
+
+    /** Microphone loudness 0..1 while listening: the body pulses slightly. */
+    fun setVoiceLevel(level: Float) {
+        voiceLevelTarget = level.coerceIn(0f, 1f)
+    }
+
+    /** Brief sad face (used when something went wrong). */
+    fun showSad() {
+        setOverride(Mood.SAD, 2.2f)
+    }
+
     // =====================================================================
     // Lifecycle
     // =====================================================================
@@ -391,6 +448,7 @@ class GhostView @JvmOverloads constructor(
     private fun step(dt: Float) {
         time += dt
         idle += dt
+        if (voiceState != VoiceState.IDLE) idle = 0f
 
         updateMood(dt)
 
@@ -409,6 +467,21 @@ class GhostView @JvmOverloads constructor(
 
         updateBrows(dt)
         updateBlink(dt)
+
+        // Voice-linked face/body: listening pulse + tilt, thinking sway, talking mouth
+        val levelTarget = if (mood == Mood.LISTENING) voiceLevelTarget else 0f
+        voiceLevel += (levelTarget - voiceLevel) * (1f - exp(-12f * dt))
+        val voiceTiltTarget = when (mood) {
+            Mood.LISTENING -> 5f * listenDir
+            Mood.THINKING -> sin(time * TWO_PI / 2.2f) * 2.5f
+            else -> 0f
+        }
+        voiceTilt += (voiceTiltTarget - voiceTilt) * (1f - exp(-4f * dt))
+        talkPhase += dt * TWO_PI * 3.6f * (0.8f + 0.4f * sin(time * 1.7f))
+        val talkTarget = if (mood == Mood.TALKING) {
+            (0.15f + 0.85f * abs(sin(talkPhase))) * (0.7f + 0.3f * sin(time * 2.3f + 1f))
+        } else 0f
+        talkOpen += (talkTarget - talkOpen) * (1f - exp(-18f * dt))
 
         val asleepTarget = when (mood) {
             Mood.SLEEPING -> 1f
@@ -442,6 +515,7 @@ class GhostView @JvmOverloads constructor(
                 browKickVel = 0f
             }
             Mood.ANGRY -> browTwitchT = 0f
+            Mood.LISTENING -> listenDir = if (Random.nextBoolean()) 1f else -1f
             Mood.MISCHIEVOUS -> {
                 mischT = 0f
                 if (glanceDir < 0f) mirrorFace()
@@ -479,6 +553,9 @@ class GhostView @JvmOverloads constructor(
         val override = overrideMood
         val m = when {
             dragging -> Mood.SURPRISED
+            voiceState == VoiceState.LISTENING -> Mood.LISTENING
+            voiceState == VoiceState.THINKING -> Mood.THINKING
+            voiceState == VoiceState.SPEAKING -> Mood.TALKING
             override != null -> override
             idle >= SLEEP_AFTER -> Mood.SLEEPING
             idle >= SLEEPY_AFTER -> Mood.SLEEPY
@@ -693,8 +770,8 @@ class GhostView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         val s = min(width / LOGICAL_W, height / LOGICAL_H)
-        val moodY = sagAmt * 2.8f + swayAmt * 1.2f
-        val moodTilt = sin(time * TWO_PI / 4.5f) * 3.2f * swayAmt
+        val moodY = sagAmt * 2.8f + swayAmt * 1.2f - talkOpen * 0.9f
+        val moodTilt = sin(time * TWO_PI / 4.5f) * 3.2f * swayAmt + voiceTilt
         val squash = jumpSq + sagAmt * 0.03f
 
         canvas.save()
@@ -702,7 +779,7 @@ class GhostView @JvmOverloads constructor(
         canvas.scale(s, s)
         canvas.translate(tapX, GHOST_OFFSET_Y + floatY + jumpY + moodY)
         canvas.rotate(idleTilt + dragTilt + tapRot + moodTilt, 50f, 90f)
-        canvas.scale(1f + squash, (1f - squash) * breath, 50f, 92f)
+        canvas.scale(1f + squash + voiceLevel * 0.03f, (1f - squash) * breath, 50f, 92f)
         drawGhost(canvas)
         canvas.restore()
     }
@@ -809,8 +886,12 @@ class GhostView @JvmOverloads constructor(
         val xr = cur[7]
         val yl = cur[8]
         val yr = cur[9]
-        val ct = cur[10]
-        val cb = cur[11]
+        var ct = cur[10]
+        var cb = cur[11]
+        if (talkOpen > 0.01f) {
+            ct -= talkOpen * 2.2f
+            cb += talkOpen * 7f
+        }
         val cx = (xl + xr) / 2f
 
         tmpPath.reset()

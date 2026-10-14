@@ -1,5 +1,6 @@
 package com.cuteghost.app
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.os.Build
@@ -55,6 +57,7 @@ class GhostOverlayService : Service() {
     private var windowManager: WindowManager? = null
     private var ghostView: GhostView? = null
     private var layoutParams: WindowManager.LayoutParams? = null
+    private var voice: VoiceCompanion? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -82,6 +85,8 @@ class GhostOverlayService : Service() {
 
     override fun onDestroy() {
         savePosition()
+        voice?.release()
+        voice = null
         removeGhost()
         isRunning = false
         super.onDestroy()
@@ -93,11 +98,13 @@ class GhostOverlayService : Service() {
         return try {
             val notification = buildNotification()
             if (Build.VERSION.SDK_INT >= 34) {
-                startForeground(
-                    NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-                )
+                var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+                    PackageManager.PERMISSION_GRANTED
+                ) {
+                    type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                }
+                startForeground(NOTIFICATION_ID, notification, type)
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
@@ -163,6 +170,19 @@ class GhostOverlayService : Service() {
             wm.addView(view, params)
             ghostView = view
             layoutParams = params
+            voice = VoiceCompanion(applicationContext, object : VoiceCompanion.Ui {
+                override fun onState(state: GhostView.VoiceState) {
+                    ghostView?.setVoiceState(state)
+                }
+
+                override fun onLevel(level: Float) {
+                    ghostView?.setVoiceLevel(level)
+                }
+
+                override fun onSad() {
+                    ghostView?.showSad()
+                }
+            })
             true
         } catch (e: RuntimeException) {
             // BadTokenException / SecurityException when permission is missing or revoked
@@ -231,7 +251,7 @@ class GhostOverlayService : Service() {
                         savePosition()
                     } else if (event.eventTime - event.downTime <= TAP_MAX_MS) {
                         // Only a short press without movement counts as a tap
-                        view.react()
+                        voice?.onTap()
                         v.performClick()
                     }
                     true

@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">Cute Ghost</string>
     <string name="main_title">الشبح اللطيف</string>
-    <string name="main_description">اضغط «إظهار الشبح» ليطفو فوق التطبيقات الأخرى. اسحبه بإصبعك لنقله، والمسه ليتفاعل معك.</string>
+    <string name="main_description">اضغط «إظهار الشبح» ليطفو فوق التطبيقات. يضغط الطفل على الشبح ويتحدث معه بالصوت، ويمكن سحبه لنقله.</string>
     <string name="show_ghost">إظهار الشبح</string>
     <string name="hide_ghost">إخفاء الشبح</string>
     <string name="status_running">الحالة: الشبح ظاهر الآن</string>
@@ -17,4 +17,27 @@
     <string name="notification_channel">الشبح العائم</string>
     <string name="notification_text">الشبح يعمل فوق التطبيقات. افتح التطبيق لإخفائه.</string>
     <string name="version_label">الإصدار %s</string>
+    <string name="parent_button">إعدادات الأهل</string>
+    <string name="parent_gate_title">للأهل فقط</string>
+    <string name="parent_gate_message">حل المسألة للمتابعة: %1$d + %2$d = ؟</string>
+    <string name="parent_gate_wrong">الإجابة غير صحيحة</string>
+    <string name="need_key_title">مفتاح الذكاء الاصطناعي مطلوب</string>
+    <string name="need_key_message">أضف مفتاح الذكاء الاصطناعي من إعدادات الأهل قبل إظهار الشبح.</string>
+    <string name="open_parent_settings">فتح إعدادات الأهل</string>
+    <string name="mic_denied">بدون إذن الميكروفون لا يستطيع الشبح الاستماع.</string>
+    <string name="settings_title">إعدادات الأهل</string>
+    <string name="settings_disclosure">تنبيه للأهل: يُحوَّل كلام الطفل إلى نص بخدمة التعرف على الكلام في الجهاز، وقد تُرسَل المقاطع الصوتية إلى شركة الخدمة (غالبًا جوجل). ثم يُرسَل النص فقط إلى خدمة Anthropic للحصول على الرد. التطبيق لا يحفظ التسجيلات ولا المحادثات، ويُنسى سياق الحديث عند إخفاء الشبح. المفتاح يُحفظ داخل التطبيق على هذا الجهاز فقط، فلا تدخله على جهاز لا تثق به. الردود مقيّدة بتعليمات صارمة لكنها ليست مضمونة بالكامل، فيُنصح بوجود الأهل قرب الطفل.</string>
+    <string name="settings_key_hint">مفتاح Anthropic API</string>
+    <string name="settings_key_saved">المفتاح محفوظ وينتهي بـ %s. اتركه فارغًا للإبقاء عليه.</string>
+    <string name="settings_model_hint">اسم النموذج</string>
+    <string name="settings_save">حفظ</string>
+    <string name="settings_clear_key">حذف المفتاح</string>
+    <string name="settings_saved">تم الحفظ</string>
+    <string name="settings_key_cleared">تم حذف المفتاح</string>
+    <string name="say_not_heard">ما سمعتك منيح. اضغط عليّ واحكي لي مرة ثانية.</string>
+    <string name="say_no_internet">ما في إنترنت هلأ. اطلب من ماما أو بابا يساعدونا.</string>
+    <string name="say_try_later">ما قدرت أجاوبك هلأ. جرّب بعد شوي.</string>
+    <string name="tts_missing">ثبّت بيانات الصوت العربي (Google Text-to-Speech) من إعدادات الجهاز.</string>
+    <string name="stt_missing">خدمة التعرف على الكلام غير متوفرة على هذا الجهاز.</string>
+    <string name="key_invalid">مفتاح الذكاء الاصطناعي غير صحيح. عدّله من إعدادات الأهل.</string>
 </resources>

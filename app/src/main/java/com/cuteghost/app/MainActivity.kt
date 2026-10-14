@@ -1,5 +1,6 @@
 package com.cuteghost.app
 
+import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
@@ -10,11 +11,18 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.text.InputType
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
+import kotlin.random.Random
 
 class MainActivity : Activity() {
+
+    companion object {
+        private const val REQ_MIC = 100
+    }
 
     private lateinit var statusText: TextView
     private val handler = Handler(Looper.getMainLooper())
@@ -26,12 +34,13 @@ class MainActivity : Activity() {
         statusText = findViewById(R.id.statusText)
         showVersion()
 
-        findViewById<Button>(R.id.showButton).setOnClickListener { onShowClicked() }
+        findViewById<Button>(R.id.showButton).setOnClickListener { proceedShow() }
         findViewById<Button>(R.id.hideButton).setOnClickListener {
             pendingShow = false
             GhostOverlayService.stop(this)
             refreshStatusLater()
         }
+        findViewById<Button>(R.id.parentButton).setOnClickListener { showParentGate() }
     }
 
     override fun onResume() {
@@ -39,7 +48,7 @@ class MainActivity : Activity() {
         if (pendingShow) {
             pendingShow = false
             if (Settings.canDrawOverlays(this)) {
-                startGhost()
+                proceedShow()
             } else {
                 Toast.makeText(this, R.string.permission_not_granted, Toast.LENGTH_LONG).show()
             }
@@ -52,12 +61,36 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
-    private fun onShowClicked() {
-        if (Settings.canDrawOverlays(this)) {
-            startGhost()
-        } else {
-            showPermissionDialog()
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_MIC) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                proceedShow()
+            } else {
+                Toast.makeText(this, R.string.mic_denied, Toast.LENGTH_LONG).show()
+            }
         }
+    }
+
+    /** Overlay permission -> AI key -> microphone permission -> start. */
+    private fun proceedShow() {
+        if (!Settings.canDrawOverlays(this)) {
+            showPermissionDialog()
+            return
+        }
+        if (!ChatSettings.hasKey(this)) {
+            showNeedKeyDialog()
+            return
+        }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQ_MIC)
+            return
+        }
+        startGhost()
     }
 
     private fun startGhost() {
@@ -74,6 +107,35 @@ class MainActivity : Activity() {
             .setTitle(R.string.permission_title)
             .setMessage(R.string.permission_message)
             .setPositiveButton(R.string.open_settings) { _, _ -> openOverlaySettings() }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showNeedKeyDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.need_key_title)
+            .setMessage(R.string.need_key_message)
+            .setPositiveButton(R.string.open_parent_settings) { _, _ -> showParentGate() }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** Simple arithmetic gate so small children cannot reach the settings. */
+    private fun showParentGate() {
+        val a = Random.nextInt(3, 9)
+        val b = Random.nextInt(3, 9)
+        val input = EditText(this).apply { inputType = InputType.TYPE_CLASS_NUMBER }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.parent_gate_title)
+            .setMessage(getString(R.string.parent_gate_message, a, b))
+            .setView(input)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                if (input.text.toString().trim() == (a + b).toString()) {
+                    startActivity(Intent(this, SettingsActivity::class.java))
+                } else {
+                    Toast.makeText(this, R.string.parent_gate_wrong, Toast.LENGTH_SHORT).show()
+                }
+            }
             .setNegativeButton(R.string.cancel, null)
             .show()
     }
