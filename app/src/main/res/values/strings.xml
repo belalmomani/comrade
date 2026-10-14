@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">Cute Ghost</string>
     <string name="main_title">الشبح اللطيف</string>
-    <string name="main_description">اضغط «إظهار الشبح» ليطفو فوق التطبيقات. يضغط الطفل على الشبح ويتحدث معه بالصوت، ويمكن سحبه لنقله.</string>
+    <string name="main_description">اضغط «إظهار الشبح» ليطفو فوق التطبيقات. يطلب الشبح الطعام كل ساعة، ويطعمه الطفل بسحب الطعام إلى فمه. ويمكن سحب الشبح لنقله.</string>
     <string name="show_ghost">إظهار الشبح</string>
     <string name="hide_ghost">إخفاء الشبح</string>
     <string name="status_running">الحالة: الشبح ظاهر الآن</string>
@@ -42,4 +42,9 @@
     <string name="key_invalid">مفاتيح الذكاء الاصطناعي المضافة غير صالحة.</string>
     <string name="say_not_ready">لسا ما صرت جاهز أحكي معك. اطلب من ماما أو بابا.</string>
     <string name="main_privacy_note">تنبيه للأهل: يُحوَّل كلام الطفل إلى نص بخدمة التعرف على الكلام في الجهاز (قد تُرسَل المقاطع الصوتية إلى جوجل)، ثم يُرسَل النص فقط إلى خدمة الذكاء الاصطناعي. لا يحفظ التطبيق التسجيلات ولا المحادثات. الردود مقيّدة بتعليمات صارمة لكنها ليست مضمونة بالكامل، فيُنصح بوجود الأهل قرب الطفل.</string>
+    <string name="feed_ask">أرجوك أطعمني، أنا جائع</string>
+    <string name="feed_thanks">شكرًا! طعمه لذيذ</string>
+    <string name="feed_now">جرّب الإطعام الآن</string>
+    <string name="feed_need_ghost">أظهر الشبح أولًا</string>
+    <string name="main_privacy_note_local">هذا التطبيق لا يستخدم الإنترنت ولا الميكروفون ولا يجمع أي بيانات.</string>
 </resources>

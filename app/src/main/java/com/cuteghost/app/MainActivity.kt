@@ -30,12 +30,26 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
         statusText = findViewById(R.id.statusText)
         showVersion()
+        findViewById<TextView>(R.id.privacyNote).setText(
+            if (Features.VOICE_ENABLED) R.string.main_privacy_note else R.string.main_privacy_note_local
+        )
 
         findViewById<Button>(R.id.showButton).setOnClickListener { proceedShow() }
         findViewById<Button>(R.id.hideButton).setOnClickListener {
             pendingShow = false
             GhostOverlayService.stop(this)
             refreshStatusLater()
+        }
+        findViewById<Button>(R.id.feedButton).setOnClickListener {
+            if (GhostOverlayService.isRunning) {
+                try {
+                    GhostOverlayService.feedNow(this)
+                } catch (e: RuntimeException) {
+                    Toast.makeText(this, R.string.start_failed, Toast.LENGTH_LONG).show()
+                }
+            } else {
+                Toast.makeText(this, R.string.feed_need_ghost, Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -72,13 +86,15 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Overlay permission -> microphone permission -> start. */
+    /** Overlay permission (-> microphone permission only when voice is enabled) -> start. */
     private fun proceedShow() {
         if (!Settings.canDrawOverlays(this)) {
             showPermissionDialog()
             return
         }
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+        if (Features.VOICE_ENABLED &&
+            checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
+        ) {
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQ_MIC)
             return
         }

@@ -26,12 +26,12 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.cuteghost.app"
+        applicationId = "com.companion.theghost"
         minSdk = 24
         targetSdk = 34
         // Increase both numbers with every update so Android installs it as an update.
-        versionCode = 7
-        versionName = "1.6"
+        versionCode = 8
+        versionName = "1.7"
         buildConfigField("String", "AI_KEYS", "\"$aiKeys\"")
     }
 
