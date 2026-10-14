@@ -36,6 +36,7 @@ class GhostOverlayService : Service() {
         private const val GHOST_WIDTH_DP = 100
         private const val GHOST_HEIGHT_DP = 128
         private const val MARGIN_DP = 12
+        private const val TAP_MAX_MS = 450L
 
         fun start(context: Context) {
             val intent = Intent(context, GhostOverlayService::class.java)
@@ -228,7 +229,8 @@ class GhostOverlayService : Service() {
                     if (dragging) {
                         view.onDragEnd()
                         savePosition()
-                    } else {
+                    } else if (event.eventTime - event.downTime <= TAP_MAX_MS) {
+                        // Only a short press without movement counts as a tap
                         view.react()
                         v.performClick()
                     }
