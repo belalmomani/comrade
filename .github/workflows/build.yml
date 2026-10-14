@@ -38,6 +38,7 @@ jobs:
       - name: Build debug APK
         env:
           GHOST_KEYSTORE_PASSWORD: ${{ secrets.GHOST_KEYSTORE_PASSWORD }}
+          GHOST_AI_KEYS: ${{ secrets.GHOST_AI_KEYS }}
         run: gradle assembleDebug --stacktrace
 
       - name: Upload APK

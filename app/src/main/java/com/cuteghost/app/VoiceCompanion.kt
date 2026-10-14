@@ -199,9 +199,9 @@ class VoiceCompanion(context: Context, private val ui: Ui) {
             toast(R.string.mic_denied)
             return
         }
-        if (!ChatSettings.hasKey(appContext)) {
+        if (!AiConfig.hasKeys()) {
             ui.onSad()
-            toast(R.string.need_key_message)
+            speakLocal(R.string.say_not_ready)
             return
         }
 
@@ -274,19 +274,34 @@ class VoiceCompanion(context: Context, private val ui: Ui) {
     private fun ask(userText: String) {
         setState(GhostView.VoiceState.THINKING)
         val myToken = token
-        val key = ChatSettings.apiKey(appContext)
-        val model = ChatSettings.model(appContext)
+        val keys = AiConfig.keys()
         val messages = ArrayList(history)
         messages.add("user" to userText)
 
         try {
             executor.execute {
-                val result = ChatClient.complete(key, model, messages)
+                val result = completeWithFallback(keys, messages)
                 handler.post { if (myToken == token) onAnswer(userText, result) }
             }
         } catch (e: java.util.concurrent.RejectedExecutionException) {
             setState(GhostView.VoiceState.IDLE)
         }
+    }
+
+    /** Tries each key in turn; moves on to the next one when a key is rate-limited or rejected. */
+    private fun completeWithFallback(
+        keys: List<String>,
+        messages: List<Pair<String, String>>
+    ): ChatClient.Result {
+        var last: ChatClient.Result = ChatClient.Result.Err(ChatClient.ErrorKind.AUTH)
+        for (key in keys) {
+            val result = ChatClient.complete(key, AiConfig.MODEL, messages)
+            if (result is ChatClient.Result.Ok) return result
+            last = result
+            val kind = (result as ChatClient.Result.Err).kind
+            if (kind != ChatClient.ErrorKind.RATE && kind != ChatClient.ErrorKind.AUTH) return result
+        }
+        return last
     }
 
     private fun onAnswer(userText: String, result: ChatClient.Result) {

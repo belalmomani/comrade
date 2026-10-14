@@ -7,6 +7,12 @@ plugins {
 // Without it the build falls back to a random debug key and cannot update an installed app.
 val keystorePath: String? = System.getenv("GHOST_KEYSTORE_PATH")
 val keystorePassword: String? = System.getenv("GHOST_KEYSTORE_PASSWORD")
+// AI keys come from the GitHub secret GHOST_AI_KEYS (comma separated); empty when not set.
+val aiKeys: String = (System.getenv("GHOST_AI_KEYS") ?: "")
+    .replace("\"", "")
+    .replace("\\", "")
+    .trim()
+
 val hasStableKey = !keystorePath.isNullOrEmpty() &&
     !keystorePassword.isNullOrEmpty() &&
     file(keystorePath!!).exists()
@@ -15,13 +21,18 @@ android {
     namespace = "com.cuteghost.app"
     compileSdk = 34
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
         applicationId = "com.cuteghost.app"
         minSdk = 24
         targetSdk = 34
         // Increase both numbers with every update so Android installs it as an update.
-        versionCode = 6
-        versionName = "1.5"
+        versionCode = 7
+        versionName = "1.6"
+        buildConfigField("String", "AI_KEYS", "\"$aiKeys\"")
     }
 
     signingConfigs {
