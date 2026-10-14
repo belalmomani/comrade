@@ -33,7 +33,8 @@ class GhostOverlayService : Service() {
         private const val PREFS = "ghost_prefs"
         private const val KEY_X = "pos_x"
         private const val KEY_Y = "pos_y"
-        private const val GHOST_SIZE_DP = 110
+        private const val GHOST_WIDTH_DP = 100
+        private const val GHOST_HEIGHT_DP = 128
         private const val MARGIN_DP = 12
 
         fun start(context: Context) {
@@ -141,11 +142,10 @@ class GhostOverlayService : Service() {
 
     private fun showGhost(): Boolean {
         val wm = windowManager ?: return false
-        val size = dp(GHOST_SIZE_DP)
 
         val params = WindowManager.LayoutParams(
-            size,
-            size,
+            dp(GHOST_WIDTH_DP),
+            dp(GHOST_HEIGHT_DP),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
@@ -153,7 +153,7 @@ class GhostOverlayService : Service() {
         ).apply {
             gravity = Gravity.TOP or Gravity.START
         }
-        restorePosition(params, size)
+        restorePosition(params)
 
         val view = GhostView(this)
         attachTouchHandling(view, params)
@@ -185,6 +185,8 @@ class GhostOverlayService : Service() {
         val slop = ViewConfiguration.get(this).scaledTouchSlop
         var downRawX = 0f
         var downRawY = 0f
+        var lastRawX = 0f
+        var lastRawY = 0f
         var startX = 0
         var startY = 0
         var dragging = false
@@ -194,26 +196,37 @@ class GhostOverlayService : Service() {
                 MotionEvent.ACTION_DOWN -> {
                     downRawX = event.rawX
                     downRawY = event.rawY
+                    lastRawX = event.rawX
+                    lastRawY = event.rawY
                     startX = params.x
                     startY = params.y
                     dragging = false
+                    view.onTouchStart()
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.rawX - downRawX
                     val dy = event.rawY - downRawY
-                    if (!dragging && (abs(dx) > slop || abs(dy) > slop)) dragging = true
+                    if (!dragging && (abs(dx) > slop || abs(dy) > slop)) {
+                        dragging = true
+                        view.onDragStart()
+                    }
                     if (dragging) {
-                        val size = params.width
                         val dm = resources.displayMetrics
-                        params.x = (startX + dx).toInt().coerceIn(0, maxOf(0, dm.widthPixels - size))
-                        params.y = (startY + dy).toInt().coerceIn(0, maxOf(0, dm.heightPixels - size))
+                        params.x = (startX + dx).toInt()
+                            .coerceIn(0, maxOf(0, dm.widthPixels - params.width))
+                        params.y = (startY + dy).toInt()
+                            .coerceIn(0, maxOf(0, dm.heightPixels - params.height))
                         updateGhostLayout(v, params)
+                        view.onDragMove(event.rawX - lastRawX, event.rawY - lastRawY)
+                        lastRawX = event.rawX
+                        lastRawY = event.rawY
                     }
                     true
                 }
                 MotionEvent.ACTION_UP -> {
                     if (dragging) {
+                        view.onDragEnd()
                         savePosition()
                     } else {
                         view.react()
@@ -222,7 +235,10 @@ class GhostOverlayService : Service() {
                     true
                 }
                 MotionEvent.ACTION_CANCEL -> {
-                    if (dragging) savePosition()
+                    if (dragging) {
+                        view.onDragEnd()
+                        savePosition()
+                    }
                     true
                 }
                 else -> false
@@ -240,11 +256,11 @@ class GhostOverlayService : Service() {
 
     // ---------- Saved position ----------
 
-    private fun restorePosition(params: WindowManager.LayoutParams, size: Int) {
+    private fun restorePosition(params: WindowManager.LayoutParams) {
         val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val dm = resources.displayMetrics
-        val maxX = maxOf(0, dm.widthPixels - size)
-        val maxY = maxOf(0, dm.heightPixels - size)
+        val maxX = maxOf(0, dm.widthPixels - params.width)
+        val maxY = maxOf(0, dm.heightPixels - params.height)
         if (prefs.contains(KEY_X) && prefs.contains(KEY_Y)) {
             params.x = prefs.getInt(KEY_X, 0).coerceIn(0, maxX)
             params.y = prefs.getInt(KEY_Y, 0).coerceIn(0, maxY)
