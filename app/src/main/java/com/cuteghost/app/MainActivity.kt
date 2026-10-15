@@ -15,6 +15,7 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 
@@ -60,7 +61,15 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.feedButton).setOnClickListener { testNeed(false) }
         findViewById<Button>(R.id.drinkButton).setOnClickListener { testNeed(true) }
         findViewById<Button>(R.id.eggButton).setOnClickListener { testEgg() }
+        findViewById<Button>(R.id.neglectButton).setOnClickListener { testNeglect() }
         findViewById<Button>(R.id.checkUpdateButton).setOnClickListener { checkForUpdate(true) }
+
+        val namesField = findViewById<EditText>(R.id.namesField)
+        namesField.setText(ChildNames.raw(this))
+        findViewById<Button>(R.id.saveNamesButton).setOnClickListener {
+            ChildNames.save(this, namesField.text.toString())
+            Toast.makeText(this, R.string.names_saved, Toast.LENGTH_SHORT).show()
+        }
         updateButton.setOnClickListener { startUpdate() }
 
         askNotificationPermissionOnce()
@@ -189,6 +198,18 @@ class MainActivity : Activity() {
         }
         try {
             GhostOverlayService.eggNow(this)
+        } catch (e: RuntimeException) {
+            Toast.makeText(this, R.string.start_failed, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun testNeglect() {
+        if (!GhostOverlayService.isRunning) {
+            Toast.makeText(this, R.string.feed_need_ghost, Toast.LENGTH_LONG).show()
+            return
+        }
+        try {
+            GhostOverlayService.neglectNow(this)
         } catch (e: RuntimeException) {
             Toast.makeText(this, R.string.start_failed, Toast.LENGTH_LONG).show()
         }

@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">Cute Ghost</string>
     <string name="main_title">الشبح اللطيف</string>
-    <string name="main_description">اضغط «إظهار الشبح» ليطفو فوق التطبيقات. يطلب الشبح الطعام كل ساعة والماء كل نصف ساعة، ويطعمه الطفل ويسقيه بسحب الطعام أو الكوب إلى فمه. وبعد أن يُطعَم ويُسقى تضع الأم بيضة تفقس عن صغير بلون جديد يحتاج إلى الرعاية أيضًا. ويمكن سحب الأشباح لنقلها.</string>
+    <string name="main_description">اضغط «إظهار الشبح» ليطفو فوق التطبيقات. يطلب الشبح الطعام كل ساعة والماء كل نصف ساعة، ويطعمه الطفل ويسقيه بسحب الطعام أو الكوب إلى فمه. وبعد أن يُطعَم ويُسقى تضع الأم بيضة تفقس عن صغير بلون جديد يحتاج إلى الرعاية أيضًا. إن أُهمل الشبح بكى ثم مرض، وإن مرّت 24 ساعة بلا رعاية اختفى. ويمكن سحب الأشباح لنقلها.</string>
     <string name="show_ghost">إظهار الشبح</string>
     <string name="hide_ghost">إخفاء الشبح</string>
     <string name="status_running">الحالة: الشبح ظاهر الآن</string>
@@ -69,4 +69,59 @@
     <string name="notif_channel_updates">تحديثات التطبيق</string>
     <string name="update_notif_title">تحديث جديد للشبح</string>
     <string name="update_notif_text">الإصدار %s متاح. اضغط للتحميل والتثبيت.</string>
+    <string name="names_hint">اسم الطفل (أو عدة أسماء مفصولة بفاصلة)</string>
+    <string name="names_save">حفظ الأسماء</string>
+    <string name="names_saved">تم حفظ الأسماء</string>
+    <string name="neglect_now">جرّب الإهمال (مرحلة تالية)</string>
+    <string name="ghost_big">الشبح الكبير</string>
+    <string name="ghost_baby_number">الشبح الصغير رقم %1$d</string>
+    <string name="notice_death">مات %1$s من الجوع والعطش! يجب أن نطعمه ونسقيه.</string>
+    <string name="notice_death_heir">مات %1$s من الجوع والعطش! يجب أن نطعمه ونسقيه.\nوصار %2$s هو الشبح الكبير الآن.</string>
+    <string name="notice_death_new">مات %1$s من الجوع والعطش! يجب أن نطعمه ونسقيه.\nوظهر شبح جديد يحتاج إلى رعايتك.</string>
+
+    <string-array name="ghost_color_names">
+        <item>الشبح النعناعي</item>
+        <item>الشبح الأزرق</item>
+        <item>الشبح الخوخي</item>
+        <item>الشبح البنفسجي</item>
+        <item>الشبح الأصفر</item>
+        <item>الشبح الوردي</item>
+        <item>الشبح الأخضر</item>
+    </string-array>
+
+    <!-- Greetings: morning, evening, night -->
+    <string-array name="greetings_named">
+        <item>صباح الخير يا %1$s!</item>
+        <item>مساء الخير يا %1$s!</item>
+        <item>تصبح على خير يا %1$s!</item>
+    </string-array>
+    <string-array name="greetings_plain">
+        <item>صباح الخير!</item>
+        <item>مساء الخير!</item>
+        <item>تصبح على خير!</item>
+    </string-array>
+
+    <!-- Encouraging texts, shown about once an hour (the first one after the morning greeting is "let's play") -->
+    <string-array name="phrases_named">
+        <item>هيا نلعب يا %1$s!</item>
+        <item>أنت رائع يا %1$s!</item>
+        <item>أحسنت يا %1$s!</item>
+        <item>أنت بطل يا %1$s!</item>
+        <item>أنا سعيد لأنك صديقي يا %1$s!</item>
+        <item>ما أجمل ابتسامتك يا %1$s!</item>
+        <item>هل شربت الماء اليوم يا %1$s؟</item>
+        <item>لنلعب معًا يا %1$s!</item>
+        <item>أنت ذكي جدًا يا %1$s!</item>
+    </string-array>
+    <string-array name="phrases_plain">
+        <item>هيا نلعب!</item>
+        <item>أنت رائع!</item>
+        <item>أحسنت!</item>
+        <item>أنت بطل!</item>
+        <item>أنا سعيد لأنك صديقي!</item>
+        <item>ما أجمل ابتسامتك!</item>
+        <item>هل شربت الماء اليوم؟</item>
+        <item>لنلعب معًا!</item>
+        <item>أنت ذكي جدًا!</item>
+    </string-array>
 </resources>
