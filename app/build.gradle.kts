@@ -13,6 +13,12 @@ val aiKeys: String = (System.getenv("GHOST_AI_KEYS") ?: "")
     .replace("\\", "")
     .trim()
 
+// Repository that publishes the releases used by the in-app updater (set automatically by GitHub Actions).
+val updateRepo: String = (System.getenv("GITHUB_REPOSITORY") ?: "")
+    .replace("\"", "")
+    .replace("\\", "")
+    .trim()
+
 val hasStableKey = !keystorePath.isNullOrEmpty() &&
     !keystorePassword.isNullOrEmpty() &&
     file(keystorePath!!).exists()
@@ -30,9 +36,10 @@ android {
         minSdk = 24
         targetSdk = 34
         // Increase both numbers with every update so Android installs it as an update.
-        versionCode = 9
-        versionName = "1.8"
+        versionCode = 10
+        versionName = "1.9"
         buildConfigField("String", "AI_KEYS", "\"$aiKeys\"")
+        buildConfigField("String", "UPDATE_REPO", "\"$updateRepo\"")
     }
 
     signingConfigs {

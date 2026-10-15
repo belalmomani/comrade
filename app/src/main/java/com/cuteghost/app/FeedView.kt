@@ -39,6 +39,9 @@ class FeedView @JvmOverloads constructor(
     var listener: Listener? = null
     var ghost: GhostView? = null
 
+    /** Catch-zone scale around the mouth (babies are smaller but stay easy to feed). */
+    var mouthZoneScale = 1f
+
     private enum class Kind { APPLE, BANANA, COOKIE, CUP }
 
     private class Food(val kind: Kind) {
@@ -239,7 +242,7 @@ class FeedView @JvmOverloads constructor(
             val mx = g.left + mouth[0]
             val my = g.top + mouth[1]
             // Start a little before touching the mouth, stop a bit further away (no flicker)
-            val limit = (if (eatingNow) 42f else 32f) * d
+            val limit = (if (eatingNow) 42f else 32f) * d * mouthZoneScale
             near = hypot(drag.x - mx, drag.y - my) <= limit
             if (near) cupDir = if (drag.x < mx) 1f else -1f
         }

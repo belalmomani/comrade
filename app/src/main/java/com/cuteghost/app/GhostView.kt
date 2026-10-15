@@ -459,6 +459,36 @@ class GhostView @JvmOverloads constructor(
         setOverride(Mood.SAD, 2.2f)
     }
 
+    /** Body tint for baby ghosts; null keeps the original white of the mother. */
+    fun setBodyColor(color: Int?) {
+        val light: Int
+        val mid: Int
+        val dark: Int
+        if (color == null) {
+            light = Color.parseColor("#FFFFFF")
+            mid = Color.parseColor("#F3F4FA")
+            dark = Color.parseColor("#D4D8E8")
+        } else {
+            light = mixColors(color, Color.WHITE, 0.65f)
+            mid = mixColors(color, Color.WHITE, 0.25f)
+            dark = mixColors(color, Color.BLACK, 0.12f)
+        }
+        bodyPaint.shader = RadialGradient(
+            36f, 30f, 80f,
+            intArrayOf(light, mid, dark),
+            floatArrayOf(0f, 0.55f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        invalidate()
+    }
+
+    private fun mixColors(a: Int, b: Int, t: Float): Int {
+        val r = (Color.red(a) * (1f - t) + Color.red(b) * t).toInt()
+        val g = (Color.green(a) * (1f - t) + Color.green(b) * t).toInt()
+        val bl = (Color.blue(a) * (1f - t) + Color.blue(b) * t).toInt()
+        return Color.rgb(r, g, bl)
+    }
+
     /** Hungry / eating faces for the feeding game. */
     fun setFeedState(state: FeedState) {
         feedState = state

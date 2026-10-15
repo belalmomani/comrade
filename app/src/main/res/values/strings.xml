@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">Cute Ghost</string>
     <string name="main_title">الشبح اللطيف</string>
-    <string name="main_description">اضغط «إظهار الشبح» ليطفو فوق التطبيقات. يطلب الشبح الطعام كل ساعة والماء كل نصف ساعة، ويطعمه الطفل ويسقيه بسحب الطعام أو الكوب إلى فمه. ويمكن سحب الشبح لنقله.</string>
+    <string name="main_description">اضغط «إظهار الشبح» ليطفو فوق التطبيقات. يطلب الشبح الطعام كل ساعة والماء كل نصف ساعة، ويطعمه الطفل ويسقيه بسحب الطعام أو الكوب إلى فمه. وبعد أن يُطعَم ويُسقى تضع الأم بيضة تفقس عن صغير بلون جديد يحتاج إلى الرعاية أيضًا. ويمكن سحب الأشباح لنقلها.</string>
     <string name="show_ghost">إظهار الشبح</string>
     <string name="hide_ghost">إخفاء الشبح</string>
     <string name="status_running">الحالة: الشبح ظاهر الآن</string>
@@ -46,8 +46,27 @@
     <string name="feed_thanks">شكرًا! طعمه لذيذ</string>
     <string name="feed_now">جرّب الإطعام الآن</string>
     <string name="feed_need_ghost">أظهر الشبح أولًا</string>
-    <string name="main_privacy_note_local">هذا التطبيق لا يستخدم الإنترنت ولا الميكروفون ولا يجمع أي بيانات.</string>
+    <string name="main_privacy_note_local">هذا التطبيق لا يستخدم الميكروفون ولا يجمع أي بيانات. يتصل بالإنترنت فقط للتحقق من وجود تحديث للتطبيق.</string>
     <string name="drink_ask">أرجوك اسقني، أنا عطشان</string>
     <string name="drink_thanks">آه، ارتحت! شكرًا</string>
     <string name="drink_now">جرّب السقي الآن</string>
+    <string name="egg_now">جرّب البيضة (فقس سريع)</string>
+    <string name="update_check">التحقق من وجود تحديث</string>
+    <string name="update_available">إصدار جديد متاح: %s</string>
+    <string name="update_download">تحميل وتثبيت التحديث</string>
+    <string name="update_downloading">جارٍ التنزيل… %1$d%%</string>
+    <string name="update_downloading_unknown">جارٍ التنزيل…</string>
+    <string name="update_installing">جارٍ التثبيت… أكّد في النافذة التي ستظهر</string>
+    <string name="update_none">لا يوجد إصدار أحدث (أو تعذّر الاتصال بالإنترنت)</string>
+    <string name="update_allow_install">اسمح للتطبيق بتثبيت التطبيقات من هذه الشاشة ثم اضغط «تحميل وتثبيت التحديث» مرة أخرى.</string>
+    <string name="update_download_failed">تعذّر تنزيل التحديث. تحقق من الإنترنت وحاول مرة أخرى.</string>
+    <string name="update_bad_file">الملف المنزَّل ليس تحديثًا صالحًا لهذا التطبيق.</string>
+    <string name="update_not_newer">الملف المنزَّل ليس أحدث من الإصدار الحالي.</string>
+    <string name="update_signature_mismatch">توقيع الإصدار الجديد يختلف عن توقيع النسخة المثبتة، لذلك لا يستطيع أندرويد تثبيته فوقها. أضف سرّي التوقيع في GitHub ثم ابنِ من جديد. وقد تحتاج لحذف النسخة الحالية مرة واحدة فقط.</string>
+    <string name="update_install_failed">تعذّر بدء التثبيت.</string>
+    <string name="update_install_conflict">تعذّر التثبيت: التوقيع أو رقم الإصدار غير متوافق مع النسخة المثبتة.</string>
+    <string name="update_install_cancelled">أُلغي التثبيت.</string>
+    <string name="notif_channel_updates">تحديثات التطبيق</string>
+    <string name="update_notif_title">تحديث جديد للشبح</string>
+    <string name="update_notif_text">الإصدار %s متاح. اضغط للتحميل والتثبيت.</string>
 </resources>

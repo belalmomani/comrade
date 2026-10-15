@@ -5,6 +5,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -47,3 +50,28 @@ jobs:
           name: CuteGhost-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      - name: Read app version
+        id: ver
+        run: |
+          CODE=$(grep -E 'versionCode *= *[0-9]+' app/build.gradle.kts | head -1 | grep -oE '[0-9]+')
+          NAME=$(grep -E 'versionName *= *"' app/build.gradle.kts | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release for in-app updates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          OUT="CuteGhost-${{ steps.ver.outputs.name }}-build${{ steps.ver.outputs.code }}.apk"
+          cp "$APK" "$OUT"
+          TAG="build-${{ steps.ver.outputs.code }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$OUT" --clobber
+          else
+            gh release create "$TAG" "$OUT" \
+              --title "Cute Ghost ${{ steps.ver.outputs.name }}" \
+              --notes "Cute Ghost ${{ steps.ver.outputs.name }} (build ${{ steps.ver.outputs.code }})" \
+              --target "${{ github.sha }}"
+          fi
