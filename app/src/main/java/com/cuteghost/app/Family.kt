@@ -1,11 +1,15 @@
 package com.cuteghost.app
 
+import android.graphics.Color
+
 /** Shared settings for the ghost family (mother + babies). */
 object Family {
     const val BABY_SCALE = 0.62f
-    const val MAX_BABIES = 5
 
-    /** One distinct body colour per baby (the mother stays white). */
+    /** The number of babies is unlimited, but only this many are shown on screen at once. */
+    const val MAX_VISIBLE_BABIES = 3
+
+    /** Distinct body colours for the first babies (the original mother stays white). */
     val COLORS = intArrayOf(
         0xFF5CD6A9.toInt(), // mint
         0xFF62B6F5.toInt(), // sky blue
@@ -16,7 +20,12 @@ object Family {
         0xFFA8DB4B.toInt()  // lime
     )
 
-    fun color(index: Int): Int = COLORS[((index % COLORS.size) + COLORS.size) % COLORS.size]
+    /** Every baby gets its own colour; after the palette ends new hues are generated. */
+    fun color(index: Int): Int {
+        if (index in COLORS.indices) return COLORS[index]
+        val hue = (kotlin.math.abs(index) * 137.5f) % 360f
+        return Color.HSVToColor(floatArrayOf(hue, 0.55f, 0.95f))
+    }
 
     fun sizePx(baseDp: Int, scale: Float, density: Float): Int = (baseDp * scale * density).toInt()
 }

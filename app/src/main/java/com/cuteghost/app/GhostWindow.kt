@@ -16,15 +16,19 @@ import android.widget.FrameLayout
 import kotlin.math.abs
 
 /**
- * One ghost (the mother or a baby) in its own overlay window: drawing, dragging, taps and the
- * feeding / watering sessions. The mother and every baby use exactly the same logic.
+ * One ghost (the big one or a baby). It owns the ghost's data (colour, needs, position) and, while
+ * it is shown, its own overlay window: drawing, dragging, taps and the feeding / watering
+ * sessions. The big ghost and every baby use exactly the same care logic.
+ *
+ * A ghost can be hidden (window removed) without losing anything: its needs keep their timers.
  */
 class GhostWindow(
     private val context: Context,
     private val wm: WindowManager,
     val id: String,
     private val scale: Float,
-    private val bodyColor: Int?,
+    /** Index into the family colours, or -1 for the original white ghost. */
+    val colorIndex: Int,
     private val host: Host
 ) : FeedView.Listener {
 
@@ -45,10 +49,17 @@ class GhostWindow(
         private const val BUBBLE_HEIGHT_DP = 44
         private const val TRAY_HEIGHT_DP = 90
 
-        // Needs: food every hour, water every half hour (same for the mother and the babies)
+        // Needs: food every hour, water every half hour (same for everyone)
         const val HUNGER_INTERVAL_MS = 60L * 60L * 1000L
         const val THIRST_INTERVAL_MS = 30L * 60L * 1000L
+        const val RETRY_MS = 5L * 60L * 1000L
         const val MIN_GAP_MS = 5L * 60L * 1000L
+
+        // Neglect, counted from the moment a need became due and was not satisfied
+        const val NEGLECT_GRACE_MS = 3L * 60L * 1000L          // then: a tear
+        const val CRY_AFTER_MS = 30L * 60L * 1000L              // half an hour later: crying
+        const val SICK_AFTER_MS = 60L * 60L * 1000L             // another half hour: sick
+        const val DEATH_AFTER_MS = 24L * 60L * 60L * 1000L      // 24 hours: gone for good
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -60,16 +71,27 @@ class GhostWindow(
     var nextFoodAt = 0L
     var nextWaterAt = 0L
 
+    /** The ghost does not ask again before this time (it still can be tapped to be cared for). */
+    var askAfter = 0L
+
     var feeding = false
         private set
     var userDragging = false
         private set
     private var currentMode: FeedView.Mode? = null
 
+    var hasPosition = false
+        private set
+
     /** Resting position of the ghost box (the window itself is larger while a session is open). */
     var restX = 0
         private set
     var restY = 0
+        private set
+
+    var shownSince = 0L
+        private set
+    var lastShownAt = 0L
         private set
 
     private var rootView: FrameLayout? = null
@@ -78,11 +100,19 @@ class GhostWindow(
     lateinit var ghost: GhostView
         private set
 
+    val isShown: Boolean get() = rootView != null
+
     private val feedTimeout = Runnable { endSession(false) }
 
     private fun dp(v: Int): Int = (v * density).toInt()
 
     fun rect(): Rect = Rect(restX, restY, restX + widthPx, restY + heightPx)
+
+    fun setSavedPosition(x: Int, y: Int) {
+        restX = x
+        restY = y
+        hasPosition = true
+    }
 
     // =====================================================================
     // Window
@@ -101,11 +131,14 @@ class GhostWindow(
         p.gravity = Gravity.TOP or Gravity.START
         restX = x.coerceIn(0, maxOf(0, dm.widthPixels - widthPx))
         restY = y.coerceIn(0, maxOf(0, dm.heightPixels - heightPx))
+        hasPosition = true
         p.x = restX
         p.y = restY
 
         val g = GhostView(context)
-        g.setBodyColor(bodyColor)
+        g.setBodyColor(if (colorIndex >= 0) Family.color(colorIndex) else null)
+        // Babies play differently from the big ghost
+        g.playful = scale < 1f
         val f = FeedView(context)
         f.ghost = g
         f.listener = this
@@ -129,6 +162,8 @@ class GhostWindow(
             wm.addView(root, p)
             rootView = root
             params = p
+            shownSince = System.currentTimeMillis()
+            lastShownAt = shownSince
             true
         } catch (e: RuntimeException) {
             // BadTokenException / SecurityException when the permission is missing or revoked
@@ -137,10 +172,12 @@ class GhostWindow(
         }
     }
 
+    /** Removes the window. The ghost's data (needs, position, colour) stays. */
     fun remove() {
         handler.removeCallbacksAndMessages(null)
         feeding = false
         val root = rootView ?: return
+        lastShownAt = System.currentTimeMillis()
         try {
             wm.removeViewImmediate(root)
         } catch (e: IllegalArgumentException) {
@@ -149,6 +186,20 @@ class GhostWindow(
         rootView = null
         params = null
         feed = null
+    }
+
+    /** Fades the ghost out and removes the window, then calls [onDone]. */
+    fun fadeOutAndRemove(durationMs: Long, onDone: () -> Unit) {
+        val root = rootView
+        if (root == null) {
+            onDone()
+            return
+        }
+        setTouchable(false)
+        root.animate().alpha(0f).setDuration(durationMs).withEndAction {
+            remove()
+            onDone()
+        }.start()
     }
 
     private fun updateWindow() {
@@ -247,13 +298,29 @@ class GhostWindow(
     }
 
     // =====================================================================
-    // Needs and sessions
+    // Needs, neglect and sessions
     // =====================================================================
 
-    /** The need that is due now (earliest first) with its due time, or null. */
-    fun dueNeed(now: Long): Pair<FeedView.Mode, Long>? {
+    /**
+     * 0 healthy, 1 a tear, 2 crying, 3 sick, 4 gone for good. Counted from the earliest need that
+     * became due and was not satisfied; it ends only when everything due has been taken care of.
+     */
+    fun neglectLevel(now: Long): Int {
+        if (nextFoodAt == 0L || nextWaterAt == 0L) return 0
+        val elapsed = now - minOf(nextFoodAt, nextWaterAt)
+        return when {
+            elapsed >= DEATH_AFTER_MS -> 4
+            elapsed >= NEGLECT_GRACE_MS + SICK_AFTER_MS -> 3
+            elapsed >= NEGLECT_GRACE_MS + CRY_AFTER_MS -> 2
+            elapsed >= NEGLECT_GRACE_MS -> 1
+            else -> 0
+        }
+    }
+
+    private fun dueNeedInternal(now: Long, ignoreAskAfter: Boolean): Pair<FeedView.Mode, Long>? {
         if (nextFoodAt == 0L) nextFoodAt = now + HUNGER_INTERVAL_MS
         if (nextWaterAt == 0L) nextWaterAt = now + THIRST_INTERVAL_MS
+        if (!ignoreAskAfter && now < askAfter) return null
         val food = now >= nextFoodAt
         val water = now >= nextWaterAt
         return when {
@@ -265,6 +332,12 @@ class GhostWindow(
             else -> null
         }
     }
+
+    /** The need to ask for now (respecting the retry pause), earliest first, or null. */
+    fun dueNeed(now: Long): Pair<FeedView.Mode, Long>? = dueNeedInternal(now, false)
+
+    /** Any need that is due, even during the retry pause (used when the child taps the ghost). */
+    fun pendingNeed(now: Long): Pair<FeedView.Mode, Long>? = dueNeedInternal(now, true)
 
     /** Expands the window around the ghost (text above, tray below) and shows the need. */
     fun startSession(mode: FeedView.Mode): Boolean {
@@ -345,15 +418,19 @@ class GhostWindow(
             updateWindow()
         }
 
-        // Next request for this need, and a quiet gap before the other need
         val mode = currentMode ?: FeedView.Mode.FOOD
         val now = System.currentTimeMillis()
-        if (mode == FeedView.Mode.WATER) {
-            nextWaterAt = now + THIRST_INTERVAL_MS
-            nextFoodAt = maxOf(nextFoodAt, now + MIN_GAP_MS)
+        if (completed) {
+            // This need is satisfied. Anything else that is still due stays due (neglect goes on).
+            if (mode == FeedView.Mode.WATER) {
+                nextWaterAt = now + THIRST_INTERVAL_MS
+            } else {
+                nextFoodAt = now + HUNGER_INTERVAL_MS
+            }
+            askAfter = now + MIN_GAP_MS
         } else {
-            nextFoodAt = now + HUNGER_INTERVAL_MS
-            nextWaterAt = maxOf(nextWaterAt, now + MIN_GAP_MS)
+            // Nobody came: the need stays due and the ghost asks again in a few minutes
+            askAfter = now + RETRY_MS
         }
         currentMode = null
         host.onSessionEnded(this, mode, completed)

@@ -15,6 +15,7 @@ import android.util.AttributeSet
 import android.view.View
 import android.view.animation.LinearInterpolator
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
@@ -40,9 +41,13 @@ class GhostView @JvmOverloads constructor(
     // Order must match PRESETS
     private enum class Mood {
         HAPPY, SURPRISED, SLEEPY, SAD, MISCHIEVOUS, ANGRY, RELAXED, SLEEPING,
-        LISTENING, THINKING, TALKING, HUNGRY, EATING, THIRSTY, DRINKING, RELIEVED
+        LISTENING, THINKING, TALKING, HUNGRY, EATING, THIRSTY, DRINKING, RELIEVED,
+        CRYING, SICK
     }
-    private enum class TapAnim { HOP, DOUBLE_HOP, WIGGLE_HOP, REBOUND, LEAN, SHAKE }
+    private enum class TapAnim {
+        HOP, DOUBLE_HOP, WIGGLE_HOP, REBOUND, LEAN, SHAKE,
+        SPIN, TRIPLE_BOUNCE, DANCE, PEEK // baby play
+    }
 
     companion object {
         const val LOGICAL_W = 100f
@@ -190,11 +195,28 @@ class GhostView @JvmOverloads constructor(
                 0f, 1f, 0f, 0.4f, 0f,
                 0.3f, 34.5f, 35f, 34.5f, 35f, 2f,
                 0.9f, 0f
+            ),
+            // CRYING: squeezed wet eyes, wide wobbling mouth, sad brows
+            floatArrayOf(
+                7.5f, 8f, 0f, 0.5f, 0f, 0.5f,
+                40f, 60f, 66f, 66f, 60.5f, 79f,
+                0f, 0.9f, 0.55f, 0f, 0f,
+                0.95f, 33f, 37.5f, 33f, 37.5f, 0.5f,
+                1.3f, 0.5f
+            ),
+            // SICK: tired droopy eyes, pale cheeks, wavy frown
+            floatArrayOf(
+                7.5f, 8.4f, 0.4f, 0.4f, 0.4f, 0.4f,
+                43.5f, 56.5f, 68f, 68f, 62.5f, 65.5f,
+                0f, 0.3f, 0f, 0f, 0f,
+                0.85f, 33f, 36.5f, 33f, 36.5f, 0.5f,
+                0.7f, 1f
             )
         )
     }
 
     private val happyAnims = listOf(TapAnim.HOP, TapAnim.DOUBLE_HOP, TapAnim.WIGGLE_HOP)
+    private val playfulAnims = listOf(TapAnim.SPIN, TapAnim.TRIPLE_BOUNCE, TapAnim.PEEK)
 
     // ----- Face state -----
     private val cur = FloatArray(N)
@@ -236,6 +258,24 @@ class GhostView @JvmOverloads constructor(
     private var breath = 1f
     private var sagAmt = 0f   // sad: body lowers slightly
     private var swayAmt = 0f  // sleepy: slow sway
+
+    // ----- Neglect (tear, crying, sickness) and the baby play style -----
+    /** Babies play differently from the big ghost: livelier float and other tap moves. */
+    var playful = false
+    private var neglect = 0
+    private var cryPhase = 0f
+    private var cryAmt = 0f
+    private var sickAmt = 0f
+    private var lastSickApplied = 0f
+    private var spinX = 1f
+    private var baseBodyColor: Int? = null
+    private val tearPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#7FD1FF") }
+    private val streamPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#7FD1FF")
+        style = Paint.Style.STROKE
+        strokeWidth = 2f
+        strokeCap = Paint.Cap.ROUND
+    }
 
     // ----- Voice conversation -----
     private var voiceState = VoiceState.IDLE
@@ -459,27 +499,45 @@ class GhostView @JvmOverloads constructor(
         setOverride(Mood.SAD, 2.2f)
     }
 
-    /** Body tint for baby ghosts; null keeps the original white of the mother. */
+    /** Body tint for baby ghosts; null keeps the original white of the big ghost. */
     fun setBodyColor(color: Int?) {
-        val light: Int
-        val mid: Int
-        val dark: Int
-        if (color == null) {
-            light = Color.parseColor("#FFFFFF")
-            mid = Color.parseColor("#F3F4FA")
-            dark = Color.parseColor("#D4D8E8")
+        baseBodyColor = color
+        rebuildBodyShader()
+        invalidate()
+    }
+
+    /** Neglect level 0..3: 0 healthy, 1 a tear, 2 crying, 3 sick. */
+    fun setNeglect(level: Int) {
+        neglect = level.coerceIn(0, 3)
+        if (neglect > 0) idle = 0f
+    }
+
+    /** Rebuilds the body gradient from the base colour, turning greener while the ghost is sick. */
+    private fun rebuildBodyShader() {
+        val color = baseBodyColor
+        val stops = if (color == null) {
+            intArrayOf(
+                Color.parseColor("#FFFFFF"),
+                Color.parseColor("#F3F4FA"),
+                Color.parseColor("#D4D8E8")
+            )
         } else {
-            light = mixColors(color, Color.WHITE, 0.65f)
-            mid = mixColors(color, Color.WHITE, 0.25f)
-            dark = mixColors(color, Color.BLACK, 0.12f)
+            intArrayOf(
+                mixColors(color, Color.WHITE, 0.65f),
+                mixColors(color, Color.WHITE, 0.25f),
+                mixColors(color, Color.BLACK, 0.12f)
+            )
+        }
+        if (sickAmt > 0.01f) {
+            val green = Color.parseColor("#9BCB6B")
+            for (i in stops.indices) stops[i] = mixColors(stops[i], green, 0.55f * sickAmt)
         }
         bodyPaint.shader = RadialGradient(
             36f, 30f, 80f,
-            intArrayOf(light, mid, dark),
+            stops,
             floatArrayOf(0f, 0.55f, 1f),
             Shader.TileMode.CLAMP
         )
-        invalidate()
     }
 
     private fun mixColors(a: Int, b: Int, t: Float): Int {
@@ -551,8 +609,8 @@ class GhostView @JvmOverloads constructor(
         val reaction = options.random()
         val anim = when (reaction) {
             Mood.SURPRISED -> TapAnim.REBOUND
-            Mood.MISCHIEVOUS -> TapAnim.LEAN
-            else -> happyAnims.filter { it != lastTapAnim }.random()
+            Mood.MISCHIEVOUS -> if (playful) TapAnim.DANCE else TapAnim.LEAN
+            else -> (if (playful) playfulAnims else happyAnims).filter { it != lastTapAnim }.random()
         }
         return Pair(reaction, anim)
     }
@@ -560,7 +618,7 @@ class GhostView @JvmOverloads constructor(
     private fun step(dt: Float) {
         time += dt
         idle += dt
-        if (voiceState != VoiceState.IDLE || feedState != FeedState.NONE) idle = 0f
+        if (voiceState != VoiceState.IDLE || feedState != FeedState.NONE || neglect > 0) idle = 0f
 
         updateMood(dt)
 
@@ -591,11 +649,13 @@ class GhostView @JvmOverloads constructor(
         voiceTilt += (voiceTiltTarget - voiceTilt) * (1f - exp(-4f * dt))
         talkPhase += dt * TWO_PI * 3.6f * (0.8f + 0.4f * sin(time * 1.7f))
         chewPhase += dt * TWO_PI * 2.2f
+        cryPhase += dt * TWO_PI * 3.2f
         gulpPhase += dt * TWO_PI * 1.3f
         val talkTarget = when (mood) {
             Mood.TALKING ->
                 (0.15f + 0.85f * abs(sin(talkPhase))) * (0.7f + 0.3f * sin(time * 2.3f + 1f))
             Mood.EATING -> 0.1f + 0.9f * abs(sin(chewPhase))
+            Mood.CRYING -> 0.35f + 0.65f * abs(sin(cryPhase))
             Mood.DRINKING -> {
                 val gulp = max(0f, sin(gulpPhase))
                 0.2f + 0.8f * gulp * gulp
@@ -613,16 +673,26 @@ class GhostView @JvmOverloads constructor(
 
         // Mood-linked body motion fades in/out smoothly and is off while dragging
         val kBody = 1f - exp(-3f * dt)
-        val sagTarget = if ((mood == Mood.SAD || mood == Mood.HUNGRY || mood == Mood.THIRSTY) && !dragging) 1f else 0f
+        val sagTarget = if ((mood == Mood.SAD || mood == Mood.HUNGRY || mood == Mood.THIRSTY ||
+                mood == Mood.CRYING || mood == Mood.SICK) && !dragging) 1f else 0f
         val swayTarget = if (mood == Mood.SLEEPY && !dragging) 1f else 0f
         sagAmt += (sagTarget - sagAmt) * kBody
+        cryAmt += ((if (mood == Mood.CRYING && !dragging) 1f else 0f) - cryAmt) * kBody
+        sickAmt += ((if (mood == Mood.SICK) 1f else 0f) - sickAmt) * kBody
+        if (abs(sickAmt - lastSickApplied) > 0.02f) {
+            lastSickApplied = sickAmt
+            rebuildBodyShader()
+        }
         swayAmt += (swayTarget - swayAmt) * kBody
 
         // Calm continuous float (slower and gentler when drowsy)
-        floatPhase += dt * TWO_PI / (2.8f + 1.4f * sleepAmt)
+        val basePeriod = if (playful) 2.0f else 2.8f
+        val baseAmp = if (playful) 4.2f else 3.2f
+        val baseTilt = if (playful) 3.2f else 1.8f
+        floatPhase += dt * TWO_PI / (basePeriod + 1.4f * sleepAmt)
         if (floatPhase > TWO_PI) floatPhase -= TWO_PI
-        floatY = sin(floatPhase) * (3.2f - 1.7f * sleepAmt)
-        idleTilt = sin(floatPhase + 0.8f) * 1.8f * (1f - 0.6f * sleepAmt)
+        floatY = sin(floatPhase) * (baseAmp - 1.7f * sleepAmt)
+        idleTilt = sin(floatPhase + 0.8f) * baseTilt * (1f - 0.6f * sleepAmt)
         breath = 1f + 0.018f * sleepAmt * sin(time * TWO_PI / 3.8f)
 
         updateTapAnim(dt)
@@ -681,6 +751,9 @@ class GhostView @JvmOverloads constructor(
             feedState == FeedState.DRINKING -> Mood.DRINKING
             feedState == FeedState.HUNGRY -> Mood.HUNGRY
             feedState == FeedState.THIRSTY -> Mood.THIRSTY
+            neglect >= 3 -> Mood.SICK
+            neglect == 2 -> Mood.CRYING
+            neglect == 1 -> Mood.SAD
             override != null -> override
             idle >= SLEEP_AFTER -> Mood.SLEEPING
             idle >= SLEEPY_AFTER -> Mood.SLEEPY
@@ -815,6 +888,10 @@ class GhostView @JvmOverloads constructor(
             TapAnim.REBOUND -> 0.6f
             TapAnim.LEAN -> 0.95f
             TapAnim.SHAKE -> 0.6f
+            TapAnim.SPIN -> 0.9f
+            TapAnim.TRIPLE_BOUNCE -> 1.2f
+            TapAnim.DANCE -> 1.2f
+            TapAnim.PEEK -> 1.1f
         }
         tapJitter = 0.9f + Random.nextFloat() * 0.2f
         tapDir = if (Random.nextBoolean()) 1f else -1f
@@ -825,6 +902,7 @@ class GhostView @JvmOverloads constructor(
         jumpSq = 0f
         tapRot = 0f
         tapX = 0f
+        spinX = 1f
         val type = tapAnim ?: return
 
         tapT += dt
@@ -856,6 +934,36 @@ class GhostView @JvmOverloads constructor(
                 val decay = 1f - u
                 tapRot = sin(u * PI_F * 6f) * 3f * decay
                 tapX = sin(u * PI_F * 6f) * 1.2f * decay
+            }
+            // Baby play: a little pirouette (the body turns around itself)
+            TapAnim.SPIN -> {
+                hop(u, 9f * j)
+                spinX = cos(TWO_PI * smooth(u))
+            }
+            // Baby play: three quick bounces, each a bit smaller
+            TapAnim.TRIPLE_BOUNCE -> {
+                val seg = (u * 3f).toInt().coerceIn(0, 2)
+                val v = u * 3f - seg
+                hop(v, (9f - 2.5f * seg) * j)
+            }
+            // Baby play: a wiggly dance
+            TapAnim.DANCE -> {
+                val w = sin(u * TWO_PI * 3f)
+                tapRot = w * 11f
+                tapX = sin(u * TWO_PI * 3f + PI_F / 2f) * 3f
+                jumpY = -abs(w) * 3.5f
+            }
+            // Baby play: ducks down, then pops up high
+            TapAnim.PEEK -> {
+                if (u < 0.35f) {
+                    val e = smooth(u / 0.35f)
+                    jumpY = 12f * e
+                    jumpSq = 0.08f * e
+                } else {
+                    val v = (u - 0.35f) / 0.65f
+                    hop(v, 16f * j)
+                    jumpY += 12f * (1f - smooth(v * 2.5f))
+                }
             }
         }
     }
@@ -896,8 +1004,11 @@ class GhostView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         val s = min(width / LOGICAL_W, height / LOGICAL_H)
         val chewing = mood == Mood.EATING || mood == Mood.DRINKING
-        val moodY = sagAmt * 2.8f + swayAmt * 1.2f - talkOpen * (if (chewing) -1.4f else 0.9f)
-        val moodTilt = sin(time * TWO_PI / 4.5f) * 3.2f * swayAmt + voiceTilt
+        val sobbing = mood == Mood.CRYING
+        val moodY = sagAmt * 2.8f + swayAmt * 1.2f + cryAmt * abs(sin(cryPhase * 0.5f)) * 1.6f -
+            talkOpen * (if (chewing) -1.4f else if (sobbing) 0f else 0.9f)
+        val moodTilt = sin(time * TWO_PI / 4.5f) * 3.2f * swayAmt + voiceTilt +
+            sin(cryPhase) * 1.6f * cryAmt
         val squash = jumpSq + sagAmt * 0.03f + (if (chewing) talkOpen * 0.02f else 0f)
 
         canvas.save()
@@ -905,7 +1016,7 @@ class GhostView @JvmOverloads constructor(
         canvas.scale(s, s)
         canvas.translate(tapX, GHOST_OFFSET_Y + floatY + jumpY + moodY)
         canvas.rotate(idleTilt + dragTilt + tapRot + moodTilt, 50f, 90f)
-        canvas.scale(1f + squash + voiceLevel * 0.03f, (1f - squash) * breath, 50f, 92f)
+        canvas.scale((1f + squash + voiceLevel * 0.03f) * spinX, (1f - squash) * breath, 50f, 92f)
         drawGhost(canvas)
         canvas.restore()
     }
@@ -936,8 +1047,60 @@ class GhostView @JvmOverloads constructor(
         c.drawOval(rect, blushPaint)
 
         drawMouth(c)
+        drawNeglectExtras(c)
 
         if (sleepAmt > 0.5f) drawZzz(c)
+    }
+
+    /** One tear, then tear streams while crying, and a sweat drop when sick. */
+    private fun drawNeglectExtras(c: Canvas) {
+        if (neglect <= 0 || mood == Mood.EATING || mood == Mood.DRINKING) return
+        val lookX = cur[16]
+        val lookY = cur[24]
+        when (neglect) {
+            1 -> {
+                val cycle = 4.5f
+                val n = (time / cycle).toInt()
+                val p = (time % cycle) / 1.6f
+                if (p < 1f) {
+                    val x = if (n % 2 == 0) 33f + lookX else 67f + lookX
+                    drawTear(c, x, 57f + lookY, p, false)
+                }
+            }
+            2 -> {
+                for (i in 0 until 2) {
+                    val p = (time * 0.9f + i * 0.5f) % 1f
+                    drawTear(c, 33f - i * 1.5f + lookX, 57f + lookY, p, true)
+                    drawTear(c, 67f + i * 1.5f + lookX, 57f + lookY, p, true)
+                }
+            }
+            else -> {
+                val p = (time % 3f) / 2f
+                if (p < 1f) drawDrop(c, 74f, 24f + p * 10f, ((1f - p) * 230f).toInt())
+            }
+        }
+    }
+
+    private fun drawTear(c: Canvas, x0: Float, y0: Float, p: Float, stream: Boolean) {
+        val dir = if (x0 < 50f) -1f else 1f
+        val x = x0 + dir * p * 2f
+        val y = y0 + p * 22f
+        val a = (sin(PI_F * p) * 230f).toInt().coerceIn(0, 255)
+        if (stream) {
+            streamPaint.alpha = a / 2
+            c.drawLine(x0, y0, x, y, streamPaint)
+        }
+        drawDrop(c, x, y, a)
+    }
+
+    private fun drawDrop(c: Canvas, x: Float, y: Float, alpha: Int) {
+        tearPaint.alpha = alpha.coerceIn(0, 255)
+        tmpPath.reset()
+        tmpPath.moveTo(x, y - 3.6f)
+        tmpPath.quadTo(x + 2.6f, y + 0.4f, x, y + 2.6f)
+        tmpPath.quadTo(x - 2.6f, y + 0.4f, x, y - 3.6f)
+        tmpPath.close()
+        c.drawPath(tmpPath, tearPaint)
     }
 
     private fun drawEye(
