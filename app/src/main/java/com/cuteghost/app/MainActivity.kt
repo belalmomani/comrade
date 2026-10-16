@@ -62,6 +62,7 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.drinkButton).setOnClickListener { testNeed(true) }
         findViewById<Button>(R.id.eggButton).setOnClickListener { testEgg() }
         findViewById<Button>(R.id.neglectButton).setOnClickListener { testNeglect() }
+        findViewById<Button>(R.id.seasonButton).setOnClickListener { testSeasonNow() }
         findViewById<Button>(R.id.checkUpdateButton).setOnClickListener { checkForUpdate(true) }
 
         val namesField = findViewById<EditText>(R.id.namesField)
@@ -203,6 +204,18 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun testSeasonNow() {
+        if (!GhostOverlayService.isRunning) {
+            Toast.makeText(this, R.string.feed_need_ghost, Toast.LENGTH_LONG).show()
+            return
+        }
+        try {
+            GhostOverlayService.seasonNow(this)
+        } catch (e: RuntimeException) {
+            Toast.makeText(this, R.string.start_failed, Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun testNeglect() {
         if (!GhostOverlayService.isRunning) {
             Toast.makeText(this, R.string.feed_need_ghost, Toast.LENGTH_LONG).show()
@@ -317,7 +330,11 @@ class MainActivity : Activity() {
             null
         }
         if (name != null) {
-            findViewById<TextView>(R.id.versionText).text = getString(R.string.version_label, name)
+            // The signature fingerprint tells whether two builds are signed with the same key
+            val signature = Updater.signatureShort(this)
+            var text = getString(R.string.version_label, name)
+            if (signature != null) text += "\n" + getString(R.string.signature_label, signature)
+            findViewById<TextView>(R.id.versionText).text = text
         }
     }
 

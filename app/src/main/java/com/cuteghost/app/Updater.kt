@@ -61,6 +61,22 @@ object Updater {
     fun isNewer(context: Context, release: Release): Boolean =
         release.versionCode.toLong() > currentVersionCode(context)
 
+    /** Short fingerprint of the certificate this installed app is signed with (to compare builds). */
+    @Suppress("DEPRECATION")
+    fun signatureShort(context: Context): String? {
+        return try {
+            val flags = if (Build.VERSION.SDK_INT >= 28) {
+                PackageManager.GET_SIGNING_CERTIFICATES
+            } else {
+                PackageManager.GET_SIGNATURES
+            }
+            val info = context.packageManager.getPackageInfo(context.packageName, flags)
+            signerDigests(info)?.firstOrNull()?.take(8)?.uppercase()
+        } catch (e: PackageManager.NameNotFoundException) {
+            null
+        }
+    }
+
     /** Runs the check on a background thread; [callback] is called on the main thread. */
     fun checkInBackground(callback: (Release?) -> Unit) {
         Thread {

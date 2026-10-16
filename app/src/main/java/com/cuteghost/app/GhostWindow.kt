@@ -1,6 +1,10 @@
 package com.cuteghost.app
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.content.Context
+import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Handler
@@ -12,6 +16,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import kotlin.math.abs
 
@@ -26,7 +31,7 @@ class GhostWindow(
     private val context: Context,
     private val wm: WindowManager,
     val id: String,
-    private val scale: Float,
+    initialScale: Float,
     /** Index into the family colours, or -1 for the original white ghost. */
     val colorIndex: Int,
     private val host: Host
@@ -65,8 +70,15 @@ class GhostWindow(
     private val handler = Handler(Looper.getMainLooper())
     private val density = context.resources.displayMetrics.density
 
-    val widthPx = Family.sizePx(BASE_WIDTH_DP, scale, density)
-    val heightPx = Family.sizePx(BASE_HEIGHT_DP, scale, density)
+    /** 1.0 for the big ghost; babies start small and grow a little with every meal. */
+    var scale: Float = initialScale
+        private set
+
+    /** Meals eaten so far (every meal makes a baby grow by 1%). */
+    var meals = 0
+
+    val widthPx: Int get() = Family.sizePx(BASE_WIDTH_DP, scale, density)
+    val heightPx: Int get() = Family.sizePx(BASE_HEIGHT_DP, scale, density)
 
     var nextFoodAt = 0L
     var nextWaterAt = 0L
@@ -115,6 +127,87 @@ class GhostWindow(
     }
 
     // =====================================================================
+    // Growth and movement of babies
+    // =====================================================================
+
+    private var moveAnimator: ValueAnimator? = null
+
+    /** True while the window is travelling (hopping) to another place. */
+    var isMoving = false
+        private set
+
+    /** A baby grows a little: resize keeping the bottom centre of the ghost where it is. */
+    fun applyScale(newScale: Float) {
+        val oldW = widthPx
+        val oldH = heightPx
+        scale = newScale
+        feed?.mouthZoneScale = maxOf(0.8f, scale)
+        val dm = context.resources.displayMetrics
+        val newX = (restX + (oldW - widthPx) / 2).coerceIn(0, maxOf(0, dm.widthPixels - widthPx))
+        val newY = (restY + (oldH - heightPx)).coerceIn(0, maxOf(0, dm.heightPixels - heightPx))
+        restX = newX
+        restY = newY
+        val p = params
+        if (p != null && !feeding) {
+            p.x = restX
+            p.y = restY
+            p.width = widthPx
+            p.height = heightPx
+            updateWindow()
+        }
+    }
+
+    /** Moves the window smoothly to ([x], [y]). */
+    fun moveTo(x: Int, y: Int, durationMs: Long, onDone: (() -> Unit)? = null) {
+        val p = params ?: return
+        if (feeding) return
+        moveAnimator?.cancel()
+        val dm = context.resources.displayMetrics
+        val tx = x.coerceIn(0, maxOf(0, dm.widthPixels - widthPx))
+        val ty = y.coerceIn(0, maxOf(0, dm.heightPixels - heightPx))
+        val sx = p.x
+        val sy = p.y
+        isMoving = true
+        val animator = ValueAnimator.ofFloat(0f, 1f)
+        animator.duration = durationMs
+        animator.interpolator = LinearInterpolator()
+        animator.addUpdateListener {
+            val t = it.animatedFraction
+            p.x = (sx + (tx - sx) * t).toInt()
+            p.y = (sy + (ty - sy) * t).toInt()
+            restX = p.x
+            restY = p.y
+            updateWindow()
+        }
+        animator.addListener(object : AnimatorListenerAdapter() {
+            private var cancelled = false
+            override fun onAnimationCancel(animation: Animator) {
+                cancelled = true
+            }
+
+            override fun onAnimationEnd(animation: Animator) {
+                isMoving = false
+                if (!cancelled) onDone?.invoke()
+            }
+        })
+        moveAnimator = animator
+        animator.start()
+    }
+
+    /** A happy hop to another spot (babies jump around the big ghost). */
+    fun hopTo(x: Int, y: Int) {
+        if (!isShown) return
+        ghost.hopHappy()
+        moveTo(x, y, 650L)
+    }
+
+    fun fadeIn(durationMs: Long) {
+        val root = rootView ?: return
+        root.alpha = 0f
+        root.animate().alpha(1f).setDuration(durationMs).start()
+    }
+
+    // =====================================================================
     // Window
     // =====================================================================
 
@@ -143,6 +236,8 @@ class GhostWindow(
         f.ghost = g
         f.listener = this
         f.mouthZoneScale = maxOf(0.8f, scale)
+        // The water cup has the baby's colour (the big ghost keeps the blue one)
+        if (colorIndex >= 0) f.cupColor = Family.color(colorIndex)
         f.visibility = View.GONE
 
         val root = FrameLayout(context)
@@ -175,6 +270,8 @@ class GhostWindow(
     /** Removes the window. The ghost's data (needs, position, colour) stays. */
     fun remove() {
         handler.removeCallbacksAndMessages(null)
+        moveAnimator?.cancel()
+        isMoving = false
         feeding = false
         val root = rootView ?: return
         lastShownAt = System.currentTimeMillis()
@@ -254,6 +351,7 @@ class GhostWindow(
                         if (!dragging && (abs(dx) > slop || abs(dy) > slop)) {
                             dragging = true
                             userDragging = true
+                            moveAnimator?.cancel()
                             view.onDragStart()
                         }
                         if (dragging) {

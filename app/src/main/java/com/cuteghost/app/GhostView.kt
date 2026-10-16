@@ -562,6 +562,13 @@ class GhostView @JvmOverloads constructor(
         if (tapAnim == null) startTapAnim(TapAnim.HOP)
     }
 
+    /** A happy little hop (babies playing by themselves). */
+    fun hopHappy() {
+        if (feedState != FeedState.NONE || dragging) return
+        setOverride(Mood.HAPPY, 1.2f)
+        if (tapAnim == null) startTapAnim(TapAnim.HOP)
+    }
+
     /** Happy, relaxed face after a drink. */
     fun showRelieved() {
         setOverride(Mood.RELIEVED, 2.6f)

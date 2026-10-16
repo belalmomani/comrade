@@ -2,14 +2,21 @@ package com.cuteghost.app
 
 import android.graphics.Color
 
-/** Shared settings for the ghost family (mother + babies). */
+/** Shared settings for the ghost family (the big ghost and the babies). */
 object Family {
-    const val BABY_SCALE = 0.62f
+    /** Size of a newborn baby compared with the big ghost (1.0). */
+    const val NEWBORN_SCALE = 0.40f
 
-    /** The number of babies is unlimited, but only this many are shown on screen at once. */
-    const val MAX_VISIBLE_BABIES = 3
+    /** Every meal a baby eats makes it grow by this much of the big ghost's size (1%). */
+    const val GROWTH_PER_MEAL = 0.01f
 
-    /** Distinct body colours for the first babies (the original mother stays white). */
+    /** Babies never grow bigger than this. */
+    const val MAX_BABY_SCALE = 0.85f
+
+    fun babyScale(meals: Int): Float =
+        minOf(MAX_BABY_SCALE, NEWBORN_SCALE + GROWTH_PER_MEAL * meals.coerceAtLeast(0))
+
+    /** Distinct body colours for the first babies (the original big ghost stays white). */
     val COLORS = intArrayOf(
         0xFF5CD6A9.toInt(), // mint
         0xFF62B6F5.toInt(), // sky blue

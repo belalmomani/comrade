@@ -330,6 +330,6 @@ class EggView @JvmOverloads constructor(
 
     companion object {
         /** Baby starts this far below its final position, hidden behind the shell. */
-        const val HIDE_OFFSET_DP = 32f
+        const val HIDE_OFFSET_DP = 26f
     }
 }

@@ -32,9 +32,9 @@ class EggWindow(
     }
 
     companion object {
-        const val WIDTH_DP = 92
-        const val HEIGHT_DP = 114
-        const val BABY_BOTTOM_MARGIN_DP = 8
+        const val WIDTH_DP = 70
+        const val HEIGHT_DP = 88
+        const val BABY_BOTTOM_MARGIN_DP = 14
         private const val TAG = "EggWindow"
 
         fun eggWidth(density: Float): Int = (WIDTH_DP * density).toInt()
@@ -86,8 +86,8 @@ class EggWindow(
             }
         }
 
-        val babyW = Family.sizePx(GhostWindow.BASE_WIDTH_DP, Family.BABY_SCALE, density)
-        val babyH = Family.sizePx(GhostWindow.BASE_HEIGHT_DP, Family.BABY_SCALE, density)
+        val babyW = Family.sizePx(GhostWindow.BASE_WIDTH_DP, Family.NEWBORN_SCALE, density)
+        val babyH = Family.sizePx(GhostWindow.BASE_HEIGHT_DP, Family.NEWBORN_SCALE, density)
         val babyParams = FrameLayout.LayoutParams(
             babyW, babyH, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
         )

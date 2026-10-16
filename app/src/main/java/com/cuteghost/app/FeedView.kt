@@ -42,6 +42,9 @@ class FeedView @JvmOverloads constructor(
     /** Catch-zone scale around the mouth (babies are smaller but stay easy to feed). */
     var mouthZoneScale = 1f
 
+    /** Colour of the water cup (a baby's cup has the baby's colour). */
+    var cupColor: Int = Color.parseColor("#4FC3F7")
+
     private enum class Kind { APPLE, BANANA, COOKIE, CUP }
 
     private class Food(val kind: Kind) {
@@ -418,6 +421,15 @@ class FeedView @JvmOverloads constructor(
         }
     }
 
+    private fun mixC(a: Int, b: Int, t: Float): Int {
+        val r = (Color.red(a) * (1f - t) + Color.red(b) * t).toInt()
+        val g = (Color.green(a) * (1f - t) + Color.green(b) * t).toInt()
+        val bl = (Color.blue(a) * (1f - t) + Color.blue(b) * t).toInt()
+        return Color.rgb(r, g, bl)
+    }
+
+    private fun withAlpha(color: Int, alpha: Int): Int = Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color))
+
     /** Cartoon glass of water; [level] 1 = full, 0 = empty. */
     private fun drawCup(c: Canvas, level: Float) {
         fillPaint.style = Paint.Style.FILL
@@ -430,7 +442,7 @@ class FeedView @JvmOverloads constructor(
         path.lineTo(13f, 22f)
         path.quadTo(0f, 28f, -13f, 22f)
         path.close()
-        fillPaint.color = Color.parseColor("#66DFF3FF")
+        fillPaint.color = withAlpha(mixC(cupColor, Color.WHITE, 0.8f), 0x66)
         c.drawPath(path, fillPaint)
 
         // Water
@@ -443,16 +455,16 @@ class FeedView @JvmOverloads constructor(
             path.lineTo(13f, 22f)
             path.quadTo(0f, 28f, -13f, 22f)
             path.close()
-            fillPaint.color = Color.parseColor("#E64FC3F7")
+            fillPaint.color = withAlpha(cupColor, 0xE6)
             c.drawPath(path, fillPaint)
             rect.set(-hw, ys - 2.2f, hw, ys + 2.2f)
-            fillPaint.color = Color.parseColor("#81D4FA")
+            fillPaint.color = mixC(cupColor, Color.WHITE, 0.45f)
             c.drawOval(rect, fillPaint)
         }
 
         // Outline and rim
         linePaint.style = Paint.Style.STROKE
-        linePaint.color = Color.parseColor("#3D7EB8")
+        linePaint.color = mixC(cupColor, Color.BLACK, 0.35f)
         linePaint.strokeWidth = 2.4f
         path.reset()
         path.moveTo(-17f, -22f)
