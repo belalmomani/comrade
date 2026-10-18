@@ -23,6 +23,7 @@ import android.view.WindowManager
 import java.util.Calendar
 import java.util.TimeZone
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -95,6 +96,11 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
         private const val ACTION_EGG_NOW = "com.companion.theghost.EGG_NOW"
         private const val ACTION_NEGLECT_NOW = "com.companion.theghost.NEGLECT_NOW"
         private const val ACTION_SEASON_NOW = "com.companion.theghost.SEASON_NOW"
+        private const val ACTION_OUTFIT = "com.companion.theghost.OUTFIT"
+        private const val PROXIMITY_MS = 400L
+        private const val NEAR_DOOR_DP = 80
+        private const val HOUSE_DRIFT_MIN_MS = 25_000L
+        private const val HOUSE_DRIFT_MAX_MS = 45_000L
         private const val EXTRA_WATER = "water"
 
         fun start(context: Context) {
@@ -139,6 +145,14 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
             )
         }
 
+        /** Puts on the outfit that was chosen in the wardrobe. */
+        fun outfitNow(context: Context) {
+            startService(
+                context,
+                Intent(context, GhostOverlayService::class.java).setAction(ACTION_OUTFIT)
+            )
+        }
+
         private fun startService(context: Context, intent: Intent) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
@@ -172,29 +186,69 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
     private var waterFlag = false
     private var babyTotal = 0
     private var testSeason = 0
+    private var room: RoomWindow? = null
+    private var bedtimeActive = false
+    private val savedPos = HashMap<GhostWindow, Point>()
+    private var lastLoopWall = 0L
+    private var nextHouseDriftAt = 0L
 
     private val loop = object : Runnable {
         override fun run() {
+            val nowWall = System.currentTimeMillis()
+            val delta = nowWall - lastLoopWall
+            lastLoopWall = nowWall
+            // While the ghosts sleep, hunger, thirst and the 24-hour limit stand still
+            if (bedtimeActive && delta > 0L) pauseTimers(delta)
+            checkBedtime()
+            updateDayMood()
             checkDeaths()
             updateNeglectVisuals()
             checkNeeds()
             maybeLayEgg()
             manageHouse()
+            maybeDriftHouse()
             maybeSpeakPhrase()
             maybeStartSeason()
-            prefs().edit().putLong(KEY_ALIVE, System.currentTimeMillis()).apply()
+            applyOutfitToAll()
+            prefs().edit().putLong(KEY_ALIVE, nowWall).apply()
             handler.postDelayed(this, LOOP_MS)
         }
     }
 
-    /** Babies outside the house jump around the big ghost and play. */
+    /** Babies outside the house jump around the big ghost and play (each in its own way). */
     private val playLoop = object : Runnable {
         override fun run() {
-            for (b in outside.toList()) {
-                if (!b.isShown || b in entering) continue
-                if (Random.nextFloat() < 0.3f) playInPlace(b) else playHop(b)
+            if (!bedtimeActive) {
+                for (b in outside.toList()) {
+                    if (!b.isShown || b in entering) continue
+                    if (b.personality == Personality.SHY && Random.nextFloat() < 0.5f) continue
+                    val inPlace = if (b.personality == Personality.JUMPER) 0.15f else 0.3f
+                    if (Random.nextFloat() < inPlace) playInPlace(b) else playHop(b)
+                }
             }
             handler.postDelayed(this, PLAY_LOOP_MS)
+        }
+    }
+
+    /** The door of the house opens by itself when a ghost comes near it. */
+    private val proximityLoop = object : Runnable {
+        override fun run() {
+            val h = house
+            if (h != null) {
+                val door = h.doorPoint()
+                val limit = dp(NEAR_DOOR_DP).toDouble()
+                var near = false
+                for (g in shownGhosts()) {
+                    val r = g.rect()
+                    val dist = hypot((r.centerX() - door.x).toDouble(), (r.centerY() - door.y).toDouble())
+                    if (dist < limit) {
+                        near = true
+                        break
+                    }
+                }
+                h.setNear(near)
+            }
+            handler.postDelayed(this, PROXIMITY_MS)
         }
     }
 
@@ -241,6 +295,8 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
         } else if (action == ACTION_SEASON_NOW) {
             testSeason = (testSeason + 1) % 4
             startSeason(testSeason, SEASON_TEST_MS)
+        } else if (action == ACTION_OUTFIT) {
+            applyOutfitToAll()
         }
         return START_NOT_STICKY
     }
@@ -253,6 +309,8 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
         voice = null
         notice?.dismissNow()
         notice = null
+        room?.remove()
+        room = null
         seasonWindow?.remove()
         seasonWindow = null
         egg?.remove()
@@ -404,12 +462,17 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
         if (babies.isNotEmpty() || egg != null) showHouse()
 
         lastRotationAt = System.currentTimeMillis()
+        lastLoopWall = lastRotationAt
+        nextHouseDriftAt = lastRotationAt + 20_000L
         updateNeglectVisuals()
+        updateDayMood()
 
         handler.removeCallbacks(loop)
         handler.postDelayed(loop, FIRST_LOOP_DELAY_MS)
         handler.removeCallbacks(playLoop)
         handler.postDelayed(playLoop, PLAY_LOOP_MS)
+        handler.removeCallbacks(proximityLoop)
+        handler.postDelayed(proximityLoop, PROXIMITY_MS)
         handler.removeCallbacks(updateLoop)
         handler.postDelayed(updateLoop, UPDATE_FIRST_DELAY_MS)
         // Let the first baby out of the house shortly after the start
@@ -483,10 +546,11 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
 
     // ---------- GhostWindow.Host ----------
 
-    override fun canDrag(who: GhostWindow): Boolean = activeSession == null
+    override fun canDrag(who: GhostWindow): Boolean = activeSession == null && !bedtimeActive
 
-    override fun onTap(who: GhostWindow) {
+    override fun onTap(who: GhostWindow, head: Boolean) {
         if (activeSession != null || who in dying || who in entering || who.isMoving) return
+        if (bedtimeActive || who.sleeping) return // a sleeping ghost is not disturbed
         val companion = voice
         if (Features.VOICE_ENABLED && companion != null && who === mother) {
             companion.onTap()
@@ -498,16 +562,14 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
             beginSession(who, pending.first)
             return
         }
-        // Otherwise it plays; only one ghost plays at a time
+        // Otherwise it reacts to the touch (jump, laugh, hide, cry...); only one ghost at a time
         val now = SystemClock.uptimeMillis()
         if (now < reactLockUntil) return
         reactLockUntil = now + 1300L
-        who.ghost.react()
+        who.ghost.react(head)
     }
 
     override fun onMoved(who: GhostWindow) {
-        // The house always stays next to the big ghost
-        if (who === mother) placeHouse()
         persist()
     }
 
@@ -527,6 +589,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
                 who.applyScale(Family.babyScale(who.meals))
             }
         }
+        if (completed) announceGifts(Wardrobe.recordCare(this, mode == FeedView.Mode.FOOD, dayNumber()))
         persist()
         updateNeglectVisuals()
         handler.postDelayed({ if (!destroyed) maybeLayEgg() }, CELEBRATION_LOCK_MS + 400L)
@@ -538,6 +601,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
 
     private fun beginSession(w: GhostWindow, mode: FeedView.Mode): Boolean {
         if (activeSession != null || w.userDragging || w in dying || w in entering || !w.isShown) return false
+        if (bedtimeActive || w.sleeping) return false
         if (anyoneMoving()) return false
         if (!w.startSession(mode)) return false
         activeSession = w
@@ -547,7 +611,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
     }
 
     private fun checkNeeds() {
-        if (activeSession != null || anyoneMoving()) return
+        if (activeSession != null || anyoneMoving() || bedtimeActive) return
         if (SystemClock.uptimeMillis() < reactLockUntil) return
         val now = System.currentTimeMillis()
         if (now - lastSessionEndWall < SESSION_COOLDOWN_MS) return
@@ -556,7 +620,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
         var bestMode = FeedView.Mode.FOOD
         var bestTime = Long.MAX_VALUE
         for (w in shownGhosts()) {
-            if (w.userDragging || w in dying || w in entering) continue
+            if (w.userDragging || w in dying || w in entering || w.sleeping) continue
             val due = w.dueNeed(now) ?: continue
             if (due.second < bestTime) {
                 best = w
@@ -652,7 +716,6 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
         if (next.show(old.restX, old.restY)) {
             next.ghost.showFed()
             reactLockUntil = SystemClock.uptimeMillis() + CELEBRATION_LOCK_MS
-            placeHouse()
         } else {
             Log.e(TAG, "Could not show the new big ghost")
             stopSelf()
@@ -715,7 +778,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
      * outside goes back in, and a baby that needs food or water comes out for it.
      */
     private fun manageHouse() {
-        if (babies.isEmpty() || activeSession != null) return
+        if (babies.isEmpty() || activeSession != null || bedtimeActive) return
         if (house == null) showHouse()
         if (house == null) return
         val now = System.currentTimeMillis()
@@ -769,6 +832,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
             b.ghost.hopHappy()
             if (activeSession != null) b.setTouchable(false)
             b.ghost.setNeglect(minOf(3, b.neglectLevel(System.currentTimeMillis())))
+            b.ghost.setNightSleepy(isSleepyHour(hourNow()))
             handler.postDelayed({ if (!destroyed) playHop(b) }, 900L)
         }
     }
@@ -780,8 +844,8 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
             outside.remove(c)
             return
         }
-        // Wait while it is being cared for, dragged or hopping
-        if (c === activeSession || c.userDragging || c in dying || c.isMoving) {
+        // Wait while it is being cared for, dragged, hopping or asleep
+        if (c === activeSession || c.userDragging || c in dying || c.isMoving || c.sleeping) {
             handler.postDelayed({ enterHouse(c) }, 4_000L)
             return
         }
@@ -793,9 +857,22 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
             return
         }
         entering.add(c)
+        val d = resources.displayMetrics.density
         val door = h.doorPoint()
+        val tx = door.x - c.widthPx / 2
+        val ty = door.y - c.heightPx
+        val dist = hypot((tx - c.restX).toDouble(), (ty - c.restY).toDouble()).toFloat()
+        if (dist > 150f * d) {
+            // The house floats on its own and may be far away: hop towards the door in steps
+            val step = 120f * d
+            val nx = (c.restX + (tx - c.restX) / dist * step).toInt()
+            val ny = (c.restY + (ty - c.restY) / dist * step).toInt()
+            c.hopTo(nx, ny)
+            handler.postDelayed({ enterHouse(c) }, 800L)
+            return
+        }
         h.openDoor(1_700L)
-        c.hopTo(door.x - c.widthPx / 2, door.y - c.heightPx)
+        c.hopTo(tx, ty)
         handler.postDelayed({
             if (destroyed) return@postDelayed
             if (c.isShown && c !== activeSession) {
@@ -814,20 +891,31 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
     /** A baby outside jumps to another spot around the big ghost. */
     private fun playHop(b: GhostWindow) {
         val m = mother ?: return
-        if (activeSession != null || b.userDragging || b.isMoving || !b.isShown) return
-        if (b in entering || b in dying) return
+        if (bedtimeActive || activeSession != null || b.userDragging || b.isMoving || !b.isShown) return
+        if (b in entering || b in dying || b.sleeping) return
         if (SystemClock.uptimeMillis() < reactLockUntil) return
         if (b.neglectLevel(System.currentTimeMillis()) >= 1) return // a sad or sick baby does not play
         val d = resources.displayMetrics.density
         val mr = m.rect()
-        val cx = mr.centerX()
-        val cy = mr.centerY()
+        val cx = mr.centerX().toFloat()
+        val cy = mr.centerY().toFloat()
+        val bx = b.restX + b.widthPx / 2f
+        val by = b.restY + b.heightPx / 2f
+        val dx = cx - bx
+        val dy = cy - by
+        val dist = hypot(dx.toDouble(), dy.toDouble()).toFloat()
+        if (dist > 230f * d) {
+            // Far from the big ghost (the house floats on its own): hop towards her in steps
+            val step = 130f * d
+            b.hopTo((bx + dx / dist * step - b.widthPx / 2f).toInt(), (by + dy / dist * step - b.heightPx / 2f).toInt())
+            return
+        }
         val occupied = occupiedRects(b)
         for (attempt in 0 until 8) {
             val angle = Random.nextFloat() * 6.2831855f
-            val dist = (80f + Random.nextFloat() * 70f) * d
-            val x = (cx + cos(angle) * dist - b.widthPx / 2f).toInt()
-            val y = (cy + sin(angle) * dist * 0.6f - b.heightPx / 2f).toInt()
+            val radius = (80f + Random.nextFloat() * 70f) * d
+            val x = (cx + cos(angle) * radius - b.widthPx / 2f).toInt()
+            val y = (cy + sin(angle) * radius * 0.6f - b.heightPx / 2f).toInt()
             if (isSpotFree(x, y, b.widthPx, b.heightPx, occupied)) {
                 b.hopTo(x, y)
                 return
@@ -843,14 +931,14 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
         if (now < reactLockUntil) return
         if (b.neglectLevel(System.currentTimeMillis()) >= 1) return
         reactLockUntil = now + 1300L
-        b.ghost.react()
+        b.ghost.playRandom()
     }
 
     // ---------- Egg and babies ----------
 
     /** The big ghost lays one egg per day, after she was fed and watered. */
     private fun maybeLayEgg() {
-        if (egg != null || activeSession != null) return
+        if (egg != null || activeSession != null || bedtimeActive) return
         if (!fedFlag || !waterFlag) return
         if (prefs().getInt(KEY_LAST_EGG_DAY, -1) == dayNumber()) return
         layEgg(EGG_INCUBATION_MS, false)
@@ -876,6 +964,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
             prefs().edit().putInt(KEY_LAST_EGG_DAY, dayNumber()).apply()
         }
         m.ghost.showFed() // the big ghost is happy after laying
+        showCuriousAll(spot.x + e.widthPx / 2) // everybody looks at the new egg
         reactLockUntil = SystemClock.uptimeMillis() + CELEBRATION_LOCK_MS
         showHouse()
         persist()
@@ -908,6 +997,15 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
                     entering.add(c)
                     handler.postDelayed({ if (!destroyed) enterHouse(c) }, SWAP_OVERLAP_MS)
                 }
+                b.ghost.setNightSleepy(isSleepyHour(hourNow()))
+                // Every baby has its own character: tell which one this baby has
+                val traits = resources.getStringArray(R.array.personality_names)
+                val trait = traits[Family.personalityFor(b.colorIndex).ordinal]
+                var text = getString(R.string.notice_hatched, ghostTitle(b), trait)
+                val gifts = Wardrobe.recordHatched(this)
+                if (gifts.isNotEmpty()) text += "\n" + giftText(gifts)
+                notice?.show(text, 9_000L)
+                showCuriousAll(bx + b.widthPx / 2)
             }
         }
         egg.remove()
@@ -918,11 +1016,11 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
 
     // ---------- Free spots on the screen ----------
 
-    private fun occupiedRects(exclude: GhostWindow? = null): List<Rect> {
+    private fun occupiedRects(exclude: GhostWindow? = null, includeHouse: Boolean = true): List<Rect> {
         val list = ArrayList<Rect>()
         for (w in shownGhosts()) if (w !== exclude) list.add(w.rect())
         egg?.let { list.add(it.rect()) }
-        house?.let { list.add(it.rect()) }
+        if (includeHouse) house?.let { list.add(it.rect()) }
         return list
     }
 
@@ -983,7 +1081,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
     // ---------- Seasons: one season a day, it disappears after 15 minutes ----------
 
     private fun maybeStartSeason() {
-        if (seasonWindow != null) return
+        if (seasonWindow != null || bedtimeActive) return
         if (System.currentTimeMillis() - serviceStartedAt < SEASON_START_DELAY_MS) return
         val day = dayNumber()
         if (prefs().getInt(KEY_SEASON_DAY, -1) == day) return
@@ -1000,6 +1098,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
             seasonWindow = sw
             val messages = resources.getStringArray(R.array.season_messages)
             if (season in messages.indices) notice?.show(messages[season], 6_000L)
+            showCuriousAll(if (Random.nextBoolean()) 0 else resources.displayMetrics.widthPixels)
         }
     }
 
@@ -1008,7 +1107,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
     /** About once an hour: a greeting in the morning, then play and encouragement texts. */
     private fun maybeSpeakPhrase() {
         val n = notice ?: return
-        if (activeSession != null || n.isShowing) return
+        if (activeSession != null || n.isShowing || bedtimeActive) return
         val now = System.currentTimeMillis()
         val p = prefs()
         if (now - p.getLong(KEY_LAST_PHRASE, 0L) < PHRASE_INTERVAL_MS) return
@@ -1050,6 +1149,127 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
         edit.putInt(KEY_PHRASE_INDEX, index + 1)
         edit.apply()
         n.show(text, 7_000L)
+    }
+
+    // ---------- Day and night: sleepy evening, bedtime in the ghosts' room ----------
+
+    private fun hourNow(): Int = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+
+    private fun isBedtimeHour(h: Int): Boolean =
+        h >= Features.BEDTIME_START_HOUR && h < Features.BEDTIME_END_HOUR
+
+    private fun isSleepyHour(h: Int): Boolean = h >= Features.SLEEPY_EVENING_HOUR || isBedtimeHour(h)
+
+    /** In the evening and at night the ghosts look sleepy. */
+    private fun updateDayMood() {
+        val sleepy = isSleepyHour(hourNow())
+        for (w in shownGhosts()) w.ghost.setNightSleepy(sleepy)
+    }
+
+    /** By the phone's clock: at bedtime the ghosts go to their beds, in the morning they wake up. */
+    private fun checkBedtime() {
+        val h = hourNow()
+        if (isBedtimeHour(h)) {
+            if (!bedtimeActive && activeSession == null) enterBedtime()
+        } else if (bedtimeActive) {
+            exitBedtime()
+        }
+    }
+
+    private fun enterBedtime() {
+        val wm = windowManager ?: return
+        val dm = resources.displayMetrics
+        val r = RoomWindow(this, wm)
+        val rx = (dm.widthPixels - r.widthPx) / 2
+        val ry = (dm.heightPixels - r.heightPx - dp(80)).coerceAtLeast(0)
+        if (!r.show(rx, ry)) return
+        room = r
+        bedtimeActive = true
+        lastLoopWall = System.currentTimeMillis()
+
+        // The house floats out of the way, to the top right
+        house?.let { it.glideTo(dm.widthPixels - it.widthPx - dp(12), dp(90), 3_000L) }
+
+        val sleepers = shownGhosts()
+            .filter { it !in dying && it !in entering }
+            .sortedByDescending { it.widthPx }
+            .take(RoomWindow.SLOTS)
+        savedPos.clear()
+        for ((i, g) in sleepers.withIndex()) {
+            savedPos[g] = Point(g.restX, g.restY)
+            g.bringToFront() // drawn above the room
+            val slot = r.slotCenter(i)
+            g.goToBed(slot.x - g.widthPx / 2, slot.y - (g.heightPx * 0.93f).toInt())
+        }
+        notice?.show(getString(R.string.notice_bedtime), 6_000L)
+    }
+
+    private fun exitBedtime() {
+        bedtimeActive = false
+        for ((g, pos) in savedPos) {
+            if (g.isShown) g.wakeUp(pos.x, pos.y)
+        }
+        savedPos.clear()
+        room?.fadeOutAndRemove()
+        room = null
+        nextHouseDriftAt = System.currentTimeMillis() + 10_000L
+        reactLockUntil = SystemClock.uptimeMillis() + CELEBRATION_LOCK_MS
+        notice?.show(getString(R.string.notice_wake), 6_000L)
+    }
+
+    /** Hunger, thirst and the neglect clock stand still while the ghosts sleep. */
+    private fun pauseTimers(deltaMs: Long) {
+        for (g in allGhosts()) {
+            if (g.nextFoodAt != 0L) g.nextFoodAt += deltaMs
+            if (g.nextWaterAt != 0L) g.nextWaterAt += deltaMs
+        }
+    }
+
+    // ---------- The floating house moves on its own ----------
+
+    private fun maybeDriftHouse() {
+        val h = house ?: return
+        if (bedtimeActive || activeSession != null || h.isGliding) return
+        val now = System.currentTimeMillis()
+        if (now < nextHouseDriftAt) return
+        nextHouseDriftAt = now + HOUSE_DRIFT_MIN_MS +
+            Random.nextLong(HOUSE_DRIFT_MAX_MS - HOUSE_DRIFT_MIN_MS)
+        val dm = resources.displayMetrics
+        val margin = dp(8)
+        val top = dp(60)
+        val bottom = dp(100)
+        val occupied = occupiedRects(null, false)
+        for (attempt in 0 until 10) {
+            val x = margin + Random.nextInt(maxOf(1, dm.widthPixels - h.widthPx - 2 * margin))
+            val y = top + Random.nextInt(maxOf(1, dm.heightPixels - h.heightPx - top - bottom))
+            if (isSpotFree(x, y, h.widthPx, h.heightPx, occupied)) {
+                h.glideTo(x, y, 7_000L)
+                return
+            }
+        }
+    }
+
+    // ---------- Outfits, gifts and curiosity ----------
+
+    private fun applyOutfitToAll() {
+        for (w in shownGhosts()) w.applyOutfit()
+    }
+
+    private fun giftText(items: List<Wardrobe.Item>): String =
+        getString(R.string.notice_gift, items.joinToString("، ") { getString(it.nameRes) })
+
+    private fun announceGifts(items: List<Wardrobe.Item>) {
+        if (items.isEmpty()) return
+        notice?.show(giftText(items), 7_000L)
+    }
+
+    /** Something new appeared: everybody looks at it with curiosity. */
+    private fun showCuriousAll(targetX: Int) {
+        for (g in shownGhosts()) {
+            if (g.sleeping || g in dying) continue
+            val dir = if (targetX < g.rect().centerX()) -1f else 1f
+            g.ghost.showCurious(dir)
+        }
     }
 
     // ---------- App updates ----------

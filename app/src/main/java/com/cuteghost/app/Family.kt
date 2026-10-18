@@ -2,8 +2,15 @@ package com.cuteghost.app
 
 import android.graphics.Color
 
+/** Character of a baby: it decides how the baby reacts when it is touched. */
+enum class Personality { JUMPER, GIGGLER, SHY, DANCER, CURIOUS }
+
 /** Shared settings for the ghost family (the big ghost and the babies). */
 object Family {
+    /** Every hatched baby gets a different character (they repeat after five). */
+    fun personalityFor(colorIndex: Int): Personality =
+        Personality.values()[((colorIndex % 5) + 5) % 5]
+
     /** Size of a newborn baby compared with the big ghost (1.0). */
     const val NEWBORN_SCALE = 0.40f
 

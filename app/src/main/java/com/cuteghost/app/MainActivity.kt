@@ -73,6 +73,7 @@ class MainActivity : Activity() {
         }
         updateButton.setOnClickListener { startUpdate() }
 
+        setupWardrobe()
         askNotificationPermissionOnce()
     }
 
@@ -92,6 +93,7 @@ class MainActivity : Activity() {
             }
         }
         refreshStatus()
+        refreshWardrobe()
 
         // Opened from the update notification, or enough time has passed: look for an update
         val fromNotification = intent?.getBooleanExtra(Updater.EXTRA_SHOW_UPDATE, false) == true
@@ -201,6 +203,51 @@ class MainActivity : Activity() {
             GhostOverlayService.eggNow(this)
         } catch (e: RuntimeException) {
             Toast.makeText(this, R.string.start_failed, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // ---------- Wardrobe: hats, scarves, wings, glow, star trail ----------
+
+    private val wardrobeSlots = listOf(
+        Triple(R.id.hatButton, Wardrobe.Slot.HAT, R.string.slot_hat),
+        Triple(R.id.scarfButton, Wardrobe.Slot.SCARF, R.string.slot_scarf),
+        Triple(R.id.wingsButton, Wardrobe.Slot.WINGS, R.string.slot_wings),
+        Triple(R.id.glowButton, Wardrobe.Slot.GLOW, R.string.slot_glow),
+        Triple(R.id.trailButton, Wardrobe.Slot.TRAIL, R.string.slot_trail)
+    )
+
+    private fun setupWardrobe() {
+        for ((buttonId, slot, _) in wardrobeSlots) {
+            findViewById<Button>(buttonId).setOnClickListener {
+                Wardrobe.cycle(this, slot)
+                refreshWardrobe()
+                outfitChanged()
+            }
+        }
+        findViewById<Button>(R.id.unlockAllButton).setOnClickListener {
+            Wardrobe.unlockAll(this)
+            refreshWardrobe()
+            Toast.makeText(this, R.string.wardrobe_unlocked, Toast.LENGTH_SHORT).show()
+        }
+        refreshWardrobe()
+    }
+
+    private fun refreshWardrobe() {
+        for ((buttonId, slot, labelRes) in wardrobeSlots) {
+            val item = Wardrobe.equippedItem(this, slot)
+            val itemName = if (item != null) getString(item.nameRes) else getString(R.string.item_none)
+            findViewById<Button>(buttonId).text =
+                getString(R.string.wardrobe_slot_format, getString(labelRes), itemName)
+        }
+    }
+
+    /** The running ghosts put on the new outfit right away. */
+    private fun outfitChanged() {
+        if (!GhostOverlayService.isRunning) return
+        try {
+            GhostOverlayService.outfitNow(this)
+        } catch (e: RuntimeException) {
+            // the outfit is applied at the next refresh anyway
         }
     }
 

@@ -42,11 +42,12 @@ class GhostView @JvmOverloads constructor(
     private enum class Mood {
         HAPPY, SURPRISED, SLEEPY, SAD, MISCHIEVOUS, ANGRY, RELAXED, SLEEPING,
         LISTENING, THINKING, TALKING, HUNGRY, EATING, THIRSTY, DRINKING, RELIEVED,
-        CRYING, SICK
+        CRYING, SICK, LAUGHING, SHY, CURIOUS
     }
     private enum class TapAnim {
         HOP, DOUBLE_HOP, WIGGLE_HOP, REBOUND, LEAN, SHAKE,
-        SPIN, TRIPLE_BOUNCE, DANCE, PEEK // baby play
+        SPIN, TRIPLE_BOUNCE, DANCE, PEEK, // baby play
+        HIDE, LAUGH, HEAD_PAT
     }
 
     companion object {
@@ -211,12 +212,36 @@ class GhostView @JvmOverloads constructor(
                 0f, 0.3f, 0f, 0f, 0f,
                 0.85f, 33f, 36.5f, 33f, 36.5f, 0.5f,
                 0.7f, 1f
+            ),
+            // LAUGHING: happy closed eyes, wide laughing mouth (animated on top)
+            floatArrayOf(
+                7.5f, 9f, 0f, 0f, 0f, 0f,
+                40f, 60f, 63f, 63f, 61f, 80f,
+                0.4f, 1f, 0.35f, 0.6f, 0f,
+                0.5f, 33.5f, 34f, 33.5f, 34f, 2.5f,
+                1f, 0f
+            ),
+            // SHY: lowered eyes, rosy cheeks, tiny smile
+            floatArrayOf(
+                7.5f, 8.4f, 0.12f, 0.12f, 0.12f, 0.12f,
+                46f, 54f, 65f, 65f, 65.5f, 69f,
+                0f, 1f, 0f, 0.25f, 0f,
+                0.5f, 33f, 35.5f, 33f, 35.5f, 1f,
+                1f, 1.6f
+            ),
+            // CURIOUS: wide eyes, one brow high, small round mouth
+            floatArrayOf(
+                8.6f, 10.8f, 0f, 0f, 0f, 0f,
+                47f, 53f, 67f, 67f, 62.5f, 71f,
+                0f, 1f, 0f, 0f, 0f,
+                0.8f, 35f, 35f, 30.5f, 30f, 1.5f,
+                1.35f, -0.5f
             )
         )
     }
 
     private val happyAnims = listOf(TapAnim.HOP, TapAnim.DOUBLE_HOP, TapAnim.WIGGLE_HOP)
-    private val playfulAnims = listOf(TapAnim.SPIN, TapAnim.TRIPLE_BOUNCE, TapAnim.PEEK)
+    private val playfulAnims = listOf(TapAnim.SPIN, TapAnim.TRIPLE_BOUNCE, TapAnim.PEEK, TapAnim.DANCE)
 
     // ----- Face state -----
     private val cur = FloatArray(N)
@@ -269,6 +294,37 @@ class GhostView @JvmOverloads constructor(
     private var lastSickApplied = 0f
     private var spinX = 1f
     private var baseBodyColor: Int? = null
+
+    // ----- Character, day and night, touch reactions -----
+    /** Character of a baby ghost (null for the big ghost). */
+    var personality: Personality? = null
+    private var nightSleepy = false
+    private var forcedSleep = false
+    private var playedUntil = 0L
+    private var curiousDir = 1f
+    private var hideAmt = 0f
+    private var heartsT = -1f
+    private var laughPhase = 0f
+    private var dragSpinPhase = 0f
+    private var dragSpinX = 1f
+
+    // ----- Outfit: hat, scarf, wings, glow, star trail -----
+    private var outfitHat = 0
+    private var outfitScarf = 0
+    private var outfitWings = 0
+    private var outfitGlow = 0
+    private var outfitTrail = 0
+    private val itemPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val itemLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val starX = FloatArray(10)
+    private val starY = FloatArray(10)
+    private val starAge = FloatArray(10) { -1f }
+    private var starTimer = 0f
     private val tearPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#7FD1FF") }
     private val streamPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#7FD1FF")
@@ -422,10 +478,13 @@ class GhostView @JvmOverloads constructor(
         idle = 0f
     }
 
-    /** A quick tap: picks a reaction (happy / surprised / mischievous) with a matching move. */
-    fun react() {
-        // Taps do not interrupt feeding or watering
-        if (feedState != FeedState.NONE) {
+    /**
+     * A quick tap. A tap makes the ghost jump (every baby in its own way); 3-4 quick taps make it
+     * laugh or hide; 5 in a row make it cry. [head] is true when the head was touched.
+     */
+    fun react(head: Boolean = false) {
+        // Taps do not interrupt feeding or watering, and a sleeping ghost is left alone
+        if (feedState != FeedState.NONE || forcedSleep) {
             idle = 0f
             return
         }
@@ -433,6 +492,7 @@ class GhostView @JvmOverloads constructor(
         tapStreak = if (now - lastTapAt < 1200L) tapStreak + 1 else 1
         lastTapAt = now
         idle = 0f
+        playedUntil = now + 20_000L // it stays happy for a while after somebody played with it
 
         if (wokeByTouch) {
             wokeByTouch = false
@@ -444,21 +504,54 @@ class GhostView @JvmOverloads constructor(
         // A new move never starts before the current one has finished
         if (tapAnim != null) return
 
-        val (reaction, anim) = pickReaction()
-        lastReaction = reaction
+        if (tapStreak >= 5) {
+            // Too many taps in a row: it cries
+            tapStreak = 0
+            startTapAnim(TapAnim.SHAKE)
+            setOverride(Mood.CRYING, 5f)
+            return
+        }
+        if (head) {
+            // Special move when the head is touched: it closes its eyes happily and little hearts rise
+            startTapAnim(TapAnim.HEAD_PAT)
+            heartsT = 0f
+            setOverride(Mood.RELIEVED, 2.2f)
+            return
+        }
+        if (tapStreak >= 3) {
+            // Quick repeated taps: it laughs or hides
+            val hide = when (personality) {
+                Personality.SHY -> true
+                Personality.GIGGLER -> false
+                else -> Random.nextBoolean()
+            }
+            if (hide) {
+                startTapAnim(TapAnim.HIDE)
+                setOverride(Mood.SHY, 2.0f)
+            } else {
+                startTapAnim(TapAnim.LAUGH)
+                setOverride(Mood.LAUGHING, 2.4f)
+            }
+            return
+        }
+
+        // A plain tap: it jumps, in the way that suits its character
+        var anim = TapAnim.HOP
+        var face = Mood.HAPPY
+        when (personality) {
+            Personality.JUMPER -> anim = TapAnim.DOUBLE_HOP
+            Personality.GIGGLER -> face = Mood.LAUGHING
+            Personality.SHY -> {
+                anim = TapAnim.REBOUND
+                face = Mood.SHY
+            }
+            Personality.DANCER -> anim = TapAnim.WIGGLE_HOP
+            Personality.CURIOUS -> face = Mood.CURIOUS
+            else -> anim = happyAnims.filter { it != lastTapAnim }.random()
+        }
         lastTapAnim = anim
         startTapAnim(anim)
-        if (reaction == Mood.MISCHIEVOUS) glanceDir = tapDir
-        if (reaction == Mood.ANGRY) tapStreak = 0
-        setOverride(
-            reaction,
-            when (reaction) {
-                Mood.SURPRISED -> 1.3f
-                Mood.MISCHIEVOUS -> 2.4f
-                Mood.ANGRY -> 1.6f
-                else -> 1.5f
-            }
-        )
+        setOverride(face, 1.6f)
     }
 
     fun onDragStart() {
@@ -547,6 +640,66 @@ class GhostView @JvmOverloads constructor(
         return Color.rgb(r, g, bl)
     }
 
+    /** In the evening the ghost looks sleepy. */
+    fun setNightSleepy(on: Boolean) {
+        nightSleepy = on
+    }
+
+    /** Puts the ghost to sleep in its bed (it cannot be woken until it is released). */
+    fun setForcedSleep(on: Boolean) {
+        forcedSleep = on
+        if (on) {
+            overrideMood = null
+            tapAnim = null
+            wokeByTouch = false
+        }
+        idle = 0f
+    }
+
+    /** Curious about something new that appeared in the direction [dir] (-1 left, 1 right). */
+    fun showCurious(dir: Float) {
+        if (feedState != FeedState.NONE || forcedSleep) return
+        curiousDir = if (dir < 0f) -1f else 1f
+        setOverride(Mood.CURIOUS, 5f)
+    }
+
+    /** A baby plays on its own with one of its play moves. */
+    fun playRandom() {
+        if (feedState != FeedState.NONE || dragging || forcedSleep || tapAnim != null) return
+        val anim = playfulAnims.filter { it != lastTapAnim }.random()
+        lastTapAnim = anim
+        startTapAnim(anim)
+        setOverride(Mood.HAPPY, 1.6f)
+    }
+
+    /** What the ghost wears: variants of hat, scarf, wings, glow and star trail (0 = nothing). */
+    fun setOutfit(hat: Int, scarf: Int, wings: Int, glow: Int, trail: Int) {
+        outfitHat = hat
+        outfitScarf = scarf
+        outfitWings = wings
+        outfitTrail = trail
+        if (glow != outfitGlow) {
+            outfitGlow = glow
+            if (glow > 0) {
+                val color = when (glow) {
+                    1 -> Color.parseColor("#FF7EB6")
+                    2 -> Color.parseColor("#5EE0FF")
+                    else -> Color.parseColor("#FFD54A")
+                }
+                glowPaint.shader = RadialGradient(
+                    50f, 56f, 64f,
+                    intArrayOf(
+                        Color.argb(200, Color.red(color), Color.green(color), Color.blue(color)),
+                        Color.argb(0, Color.red(color), Color.green(color), Color.blue(color))
+                    ),
+                    floatArrayOf(0.4f, 1f),
+                    Shader.TileMode.CLAMP
+                )
+            }
+        }
+        invalidate()
+    }
+
     /** Hungry / eating faces for the feeding game. */
     fun setFeedState(state: FeedState) {
         feedState = state
@@ -607,21 +760,6 @@ class GhostView @JvmOverloads constructor(
         overrideTimer = seconds
     }
 
-    private fun pickReaction(): Pair<Mood, TapAnim> {
-        // Rapid tapping mildly annoys the ghost
-        if (tapStreak >= 5) return Pair(Mood.ANGRY, TapAnim.SHAKE)
-
-        val options = listOf(Mood.HAPPY, Mood.SURPRISED, Mood.MISCHIEVOUS)
-            .filter { it != lastReaction }
-        val reaction = options.random()
-        val anim = when (reaction) {
-            Mood.SURPRISED -> TapAnim.REBOUND
-            Mood.MISCHIEVOUS -> if (playful) TapAnim.DANCE else TapAnim.LEAN
-            else -> (if (playful) playfulAnims else happyAnims).filter { it != lastTapAnim }.random()
-        }
-        return Pair(reaction, anim)
-    }
-
     private fun step(dt: Float) {
         time += dt
         idle += dt
@@ -651,18 +789,21 @@ class GhostView @JvmOverloads constructor(
         val voiceTiltTarget = when (mood) {
             Mood.LISTENING -> 5f * listenDir
             Mood.THINKING -> sin(time * TWO_PI / 2.2f) * 2.5f
+            Mood.CURIOUS -> 7f * curiousDir
             else -> 0f
         }
         voiceTilt += (voiceTiltTarget - voiceTilt) * (1f - exp(-4f * dt))
         talkPhase += dt * TWO_PI * 3.6f * (0.8f + 0.4f * sin(time * 1.7f))
         chewPhase += dt * TWO_PI * 2.2f
         cryPhase += dt * TWO_PI * 3.2f
+        laughPhase += dt * TWO_PI * 5f
         gulpPhase += dt * TWO_PI * 1.3f
         val talkTarget = when (mood) {
             Mood.TALKING ->
                 (0.15f + 0.85f * abs(sin(talkPhase))) * (0.7f + 0.3f * sin(time * 2.3f + 1f))
             Mood.EATING -> 0.1f + 0.9f * abs(sin(chewPhase))
             Mood.CRYING -> 0.35f + 0.65f * abs(sin(cryPhase))
+            Mood.LAUGHING -> 0.4f + 0.6f * abs(sin(laughPhase))
             Mood.DRINKING -> {
                 val gulp = max(0f, sin(gulpPhase))
                 0.2f + 0.8f * gulp * gulp
@@ -704,6 +845,7 @@ class GhostView @JvmOverloads constructor(
 
         updateTapAnim(dt)
         updateDragTilt(dt)
+        updateExtras(dt)
     }
 
     private fun onMoodEntered(m: Mood) {
@@ -714,6 +856,7 @@ class GhostView @JvmOverloads constructor(
             }
             Mood.ANGRY -> browTwitchT = 0f
             Mood.LISTENING -> listenDir = if (Random.nextBoolean()) 1f else -1f
+            Mood.CURIOUS -> tgt[16] = 2.2f * curiousDir
             Mood.MISCHIEVOUS -> {
                 mischT = 0f
                 if (glanceDir < 0f) mirrorFace()
@@ -750,7 +893,8 @@ class GhostView @JvmOverloads constructor(
 
         val override = overrideMood
         val m = when {
-            dragging -> Mood.SURPRISED
+            forcedSleep -> Mood.SLEEPING
+            dragging -> Mood.LAUGHING
             voiceState == VoiceState.LISTENING -> Mood.LISTENING
             voiceState == VoiceState.THINKING -> Mood.THINKING
             voiceState == VoiceState.SPEAKING -> Mood.TALKING
@@ -764,6 +908,8 @@ class GhostView @JvmOverloads constructor(
             override != null -> override
             idle >= SLEEP_AFTER -> Mood.SLEEPING
             idle >= SLEEPY_AFTER -> Mood.SLEEPY
+            nightSleepy -> Mood.SLEEPY
+            SystemClock.uptimeMillis() < playedUntil -> Mood.HAPPY
             else -> Mood.RELAXED
         }
         if (m != mood) {
@@ -775,7 +921,8 @@ class GhostView @JvmOverloads constructor(
 
         // Drowsiness: eyes close gradually before falling asleep
         if (mood == Mood.SLEEPY) {
-            val p = ((idle - SLEEPY_AFTER) / (SLEEP_AFTER - SLEEPY_AFTER)).coerceIn(0f, 1f)
+            val p = if (nightSleepy && idle < SLEEPY_AFTER) 0.5f
+            else ((idle - SLEEPY_AFTER) / (SLEEP_AFTER - SLEEPY_AFTER)).coerceIn(0f, 1f)
             val lid = 0.3f + 0.5f * p
             tgt[2] = lid
             tgt[3] = lid
@@ -899,6 +1046,9 @@ class GhostView @JvmOverloads constructor(
             TapAnim.TRIPLE_BOUNCE -> 1.2f
             TapAnim.DANCE -> 1.2f
             TapAnim.PEEK -> 1.1f
+            TapAnim.HIDE -> 1.6f
+            TapAnim.LAUGH -> 1.4f
+            TapAnim.HEAD_PAT -> 1.6f
         }
         tapJitter = 0.9f + Random.nextFloat() * 0.2f
         tapDir = if (Random.nextBoolean()) 1f else -1f
@@ -910,6 +1060,7 @@ class GhostView @JvmOverloads constructor(
         tapRot = 0f
         tapX = 0f
         spinX = 1f
+        hideAmt = 0f
         val type = tapAnim ?: return
 
         tapT += dt
@@ -972,6 +1123,25 @@ class GhostView @JvmOverloads constructor(
                     jumpY += 12f * (1f - smooth(v * 2.5f))
                 }
             }
+            // Hiding: it shrinks down, stays hidden for a moment, then pops back
+            TapAnim.HIDE -> {
+                hideAmt = when {
+                    u < 0.2f -> smooth(u / 0.2f)
+                    u < 0.75f -> 1f
+                    else -> 1f - smooth((u - 0.75f) / 0.25f)
+                }
+            }
+            // Laughing: it shakes with laughter and bobs
+            TapAnim.LAUGH -> {
+                val w = sin(u * TWO_PI * 5f)
+                tapRot = w * 5f
+                jumpY = -abs(w) * 3f
+            }
+            // Head pat: a gentle press and a happy wiggle
+            TapAnim.HEAD_PAT -> {
+                tapRot = sin(u * TWO_PI * 2f) * 6f * (1f - u * 0.4f)
+                jumpSq = 0.06f * sin(PI_F * min(1f, u * 3f))
+            }
         }
     }
 
@@ -1002,6 +1172,17 @@ class GhostView @JvmOverloads constructor(
         val sdt = min(dt, 0.032f)
         tiltVel += (-120f * (dragTilt - target) - 9f * tiltVel) * sdt
         dragTilt += tiltVel * sdt
+
+        // While it is dragged the body spins around itself (faster when dragged faster) and
+        // finishes the turn after it is released
+        val rate = (1.2f + min(abs(dragVel) * 0.003f, 2.5f)) * TWO_PI
+        if (dragging) {
+            dragSpinPhase += rate * dt
+        } else if (dragSpinPhase > 0f) {
+            dragSpinPhase += rate * dt
+            if (dragSpinPhase % TWO_PI < rate * dt) dragSpinPhase = 0f
+        }
+        dragSpinX = if (dragSpinPhase > 0f) cos(dragSpinPhase) else 1f
     }
 
     // =====================================================================
@@ -1023,12 +1204,18 @@ class GhostView @JvmOverloads constructor(
         canvas.scale(s, s)
         canvas.translate(tapX, GHOST_OFFSET_Y + floatY + jumpY + moodY)
         canvas.rotate(idleTilt + dragTilt + tapRot + moodTilt, 50f, 90f)
-        canvas.scale((1f + squash + voiceLevel * 0.03f) * spinX, (1f - squash) * breath, 50f, 92f)
+        val hideScale = 1f - 0.65f * hideAmt
+        canvas.scale(
+            (1f + squash + voiceLevel * 0.03f) * spinX * dragSpinX * hideScale,
+            (1f - squash) * breath * hideScale,
+            50f, 92f
+        )
         drawGhost(canvas)
         canvas.restore()
     }
 
     private fun drawGhost(c: Canvas) {
+        drawBehind(c)
         c.drawPath(body, bodyPaint)
         c.drawPath(body, shadePaint)
         c.drawCircle(30f, 28f, 15f, highlightPaint)
@@ -1055,16 +1242,205 @@ class GhostView @JvmOverloads constructor(
 
         drawMouth(c)
         drawNeglectExtras(c)
+        drawOutfitFront(c)
+        drawHearts(c)
 
         if (sleepAmt > 0.5f) drawZzz(c)
     }
 
+    // =====================================================================
+    // Outfit (hat, scarf, wings, glow, star trail) and hearts
+    // =====================================================================
+
+    private fun updateExtras(dt: Float) {
+        if (heartsT >= 0f) {
+            heartsT += dt
+            if (heartsT > 1.8f) heartsT = -1f
+        }
+        for (i in starAge.indices) {
+            if (starAge[i] >= 0f) {
+                starAge[i] += dt
+                starY[i] += 14f * dt
+                if (starAge[i] > 1.3f) starAge[i] = -1f
+            }
+        }
+        if (outfitTrail > 0) {
+            val moving = dragging || tapAnim != null || abs(dragVel) > 20f
+            starTimer -= dt
+            if (starTimer <= 0f) {
+                starTimer = if (moving) 0.12f else 0.55f
+                for (i in starAge.indices) {
+                    if (starAge[i] < 0f) {
+                        starAge[i] = 0f
+                        starX[i] = 14f + Random.nextFloat() * 72f
+                        starY[i] = 62f + Random.nextFloat() * 30f
+                        break
+                    }
+                }
+            }
+        }
+    }
+
+    private fun drawStar(c: Canvas, x: Float, y: Float, r: Float, alpha: Int) {
+        tmpPath.reset()
+        tmpPath.moveTo(x, y - r)
+        tmpPath.lineTo(x + r * 0.35f, y - r * 0.35f)
+        tmpPath.lineTo(x + r, y)
+        tmpPath.lineTo(x + r * 0.35f, y + r * 0.35f)
+        tmpPath.lineTo(x, y + r)
+        tmpPath.lineTo(x - r * 0.35f, y + r * 0.35f)
+        tmpPath.lineTo(x - r, y)
+        tmpPath.lineTo(x - r * 0.35f, y - r * 0.35f)
+        tmpPath.close()
+        itemPaint.color = Color.parseColor("#FFE27A")
+        itemPaint.alpha = alpha.coerceIn(0, 255)
+        c.drawPath(tmpPath, itemPaint)
+    }
+
+    /** Things behind the body: glowing aura, star trail and small wings. */
+    private fun drawBehind(c: Canvas) {
+        if (outfitGlow > 0) {
+            glowPaint.alpha = (170f + 70f * sin(time * 2f)).toInt().coerceIn(0, 255)
+            c.drawCircle(50f, 56f, 64f, glowPaint)
+        }
+        if (outfitTrail > 0) {
+            for (i in starAge.indices) {
+                val a = starAge[i]
+                if (a < 0f) continue
+                val alpha = (sin(PI_F * (a / 1.3f)) * 255f).toInt()
+                drawStar(c, starX[i], starY[i], 3.6f - a * 1.2f, alpha)
+            }
+        }
+        if (outfitWings > 0) {
+            val flap = sin(time * 3.2f) * 0.12f
+            for (side in intArrayOf(-1, 1)) {
+                val saved = c.save()
+                c.translate(50f + side * 35f, 58f)
+                c.scale(side.toFloat(), 1f)
+                c.rotate(-(22f + flap * 80f))
+                itemPaint.color = Color.WHITE
+                itemPaint.alpha = 255
+                rect.set(0f, -9f, 17f, 5f)
+                c.drawOval(rect, itemPaint)
+                rect.set(1f, -2f, 14f, 10f)
+                c.drawOval(rect, itemPaint)
+                itemLine.color = Color.parseColor("#BFD3EA")
+                itemLine.strokeWidth = 1.2f
+                rect.set(0f, -9f, 17f, 5f)
+                c.drawOval(rect, itemLine)
+                rect.set(1f, -2f, 14f, 10f)
+                c.drawOval(rect, itemLine)
+                c.restoreToCount(saved)
+            }
+        }
+    }
+
+    /** Scarf and hat, drawn over the face. */
+    private fun drawOutfitFront(c: Canvas) {
+        if (outfitScarf > 0) {
+            val main = if (outfitScarf == 1) Color.parseColor("#E63946") else Color.parseColor("#3D8BFD")
+            val stripe = if (outfitScarf == 1) Color.parseColor("#FFB3B8") else Color.parseColor("#A9CEFF")
+            tmpPath.reset()
+            tmpPath.moveTo(15f, 76f)
+            tmpPath.quadTo(50f, 90f, 85f, 76f)
+            itemLine.color = main
+            itemLine.strokeWidth = 8f
+            c.drawPath(tmpPath, itemLine)
+            itemLine.color = stripe
+            itemLine.strokeWidth = 2f
+            c.drawPath(tmpPath, itemLine)
+            itemPaint.color = main
+            itemPaint.alpha = 255
+            rect.set(68f, 80f, 77f, 98f)
+            c.drawRoundRect(rect, 3f, 3f, itemPaint)
+            itemPaint.color = stripe
+            rect.set(68f, 88f, 77f, 90f)
+            c.drawRect(rect, itemPaint)
+        }
+        when (outfitHat) {
+            1 -> { // party hat
+                tmpPath.reset()
+                tmpPath.moveTo(34f, 20f)
+                tmpPath.lineTo(50f, -10f)
+                tmpPath.lineTo(66f, 20f)
+                tmpPath.close()
+                itemPaint.color = Color.parseColor("#FF7AA8")
+                itemPaint.alpha = 255
+                c.drawPath(tmpPath, itemPaint)
+                itemLine.color = Color.parseColor("#FFD54A")
+                itemLine.strokeWidth = 3f
+                c.drawLine(38.4f, 12f, 61.6f, 12f, itemLine)
+                c.drawLine(43.2f, 3f, 56.8f, 3f, itemLine)
+                itemPaint.color = Color.parseColor("#FFD54A")
+                c.drawCircle(50f, -10f, 3.8f, itemPaint)
+            }
+            2 -> { // crown
+                tmpPath.reset()
+                tmpPath.moveTo(36f, 19f)
+                tmpPath.lineTo(36f, 4f)
+                tmpPath.lineTo(43f, 11f)
+                tmpPath.lineTo(50f, 1f)
+                tmpPath.lineTo(57f, 11f)
+                tmpPath.lineTo(64f, 4f)
+                tmpPath.lineTo(64f, 19f)
+                tmpPath.close()
+                itemPaint.color = Color.parseColor("#FFD54A")
+                itemPaint.alpha = 255
+                c.drawPath(tmpPath, itemPaint)
+                itemLine.color = Color.parseColor("#E0A800")
+                itemLine.strokeWidth = 1.6f
+                c.drawPath(tmpPath, itemLine)
+                itemPaint.color = Color.parseColor("#E63946")
+                c.drawCircle(50f, 14f, 2.2f, itemPaint)
+                itemPaint.color = Color.parseColor("#3D8BFD")
+                c.drawCircle(41f, 15f, 1.6f, itemPaint)
+                c.drawCircle(59f, 15f, 1.6f, itemPaint)
+            }
+            3 -> { // wizard hat
+                tmpPath.reset()
+                tmpPath.moveTo(33f, 20f)
+                tmpPath.lineTo(50f, -16f)
+                tmpPath.lineTo(67f, 20f)
+                tmpPath.close()
+                itemPaint.color = Color.parseColor("#7C5CFF")
+                itemPaint.alpha = 255
+                c.drawPath(tmpPath, itemPaint)
+                itemPaint.color = Color.parseColor("#5B3FD6")
+                rect.set(26f, 15f, 74f, 25f)
+                c.drawOval(rect, itemPaint)
+                drawStar(c, 50f, 5f, 5f, 255)
+            }
+        }
+    }
+
+    /** Little hearts rising from the head after a head pat. */
+    private fun drawHearts(c: Canvas) {
+        if (heartsT < 0f) return
+        for (i in 0 until 3) {
+            val p = heartsT / 1.8f - i * 0.15f
+            if (p <= 0f || p >= 1f) continue
+            val x = 36f + i * 14f + sin(p * 9f + i) * 2.5f
+            val y = 16f - p * 24f
+            val sz = 3.4f
+            tmpPath.reset()
+            tmpPath.moveTo(x, y + sz)
+            tmpPath.cubicTo(x - 1.4f * sz, y + 0.2f * sz, x - 1.1f * sz, y - sz, x, y - 0.4f * sz)
+            tmpPath.cubicTo(x + 1.1f * sz, y - sz, x + 1.4f * sz, y + 0.2f * sz, x, y + sz)
+            tmpPath.close()
+            itemPaint.color = Color.parseColor("#FF6F9F")
+            itemPaint.alpha = (sin(PI_F * p) * 255f).toInt().coerceIn(0, 255)
+            c.drawPath(tmpPath, itemPaint)
+        }
+    }
+
     /** One tear, then tear streams while crying, and a sweat drop when sick. */
     private fun drawNeglectExtras(c: Canvas) {
-        if (neglect <= 0 || mood == Mood.EATING || mood == Mood.DRINKING) return
+        // Crying because of neglect or because of too many taps shows the same tears
+        val level = if (neglect > 0) neglect else if (mood == Mood.CRYING) 2 else 0
+        if (level <= 0 || mood == Mood.EATING || mood == Mood.DRINKING) return
         val lookX = cur[16]
         val lookY = cur[24]
-        when (neglect) {
+        when (level) {
             1 -> {
                 val cycle = 4.5f
                 val n = (time / cycle).toInt()

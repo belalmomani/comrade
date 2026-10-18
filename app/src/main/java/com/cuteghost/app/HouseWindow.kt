@@ -1,5 +1,6 @@
 package com.cuteghost.app
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.PixelFormat
 import android.graphics.Point
@@ -9,37 +10,44 @@ import android.os.Looper
 import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
+import android.view.animation.AccelerateDecelerateInterpolator
 
-/** The babies' small house next to the big ghost. It never takes touches. */
+/** The floating house. It moves by itself and never takes touches. */
 class HouseWindow(
     private val context: Context,
     private val wm: WindowManager
 ) {
     companion object {
-        const val SIZE_DP = 88
-        fun size(density: Float): Int = (SIZE_DP * density).toInt()
+        const val WIDTH_DP = 96
+        const val HEIGHT_DP = 104
+        fun size(density: Float): Int = (WIDTH_DP * density).toInt()
     }
 
     private val handler = Handler(Looper.getMainLooper())
     private val density = context.resources.displayMetrics.density
-    val widthPx = size(density)
-    val heightPx = size(density)
+    val widthPx = (WIDTH_DP * density).toInt()
+    val heightPx = (HEIGHT_DP * density).toInt()
 
     var x = 0
         private set
     var y = 0
         private set
+    var isGliding = false
+        private set
     private var view: HouseView? = null
     private var params: WindowManager.LayoutParams? = null
-    private val closeDoor = Runnable {
-        view?.doorTarget = 0f
-        view?.invalidate()
+    private var glideAnimator: ValueAnimator? = null
+    private var near = false
+    private var forcedOpen = false
+    private val releaseForced = Runnable {
+        forcedOpen = false
+        updateDoor()
     }
 
     fun rect(): Rect = Rect(x, y, x + widthPx, y + heightPx)
 
     /** Bottom centre of the door: where babies come out and go in. */
-    fun doorPoint(): Point = Point(x + widthPx / 2, y + (heightPx * 0.93f).toInt())
+    fun doorPoint(): Point = Point(x + widthPx / 2, y + (heightPx * 0.83f).toInt())
 
     fun show(px: Int, py: Int): Boolean {
         val p = WindowManager.LayoutParams(
@@ -68,13 +76,9 @@ class HouseWindow(
         }
     }
 
-    fun moveTo(px: Int, py: Int) {
+    private fun updateWindow() {
         val v = view ?: return
         val p = params ?: return
-        x = px
-        y = py
-        p.x = x
-        p.y = y
         try {
             wm.updateViewLayout(v, p)
         } catch (e: IllegalArgumentException) {
@@ -82,17 +86,57 @@ class HouseWindow(
         }
     }
 
-    /** Opens the door for a while (a baby is going in or out). */
-    fun openDoor(forMs: Long) {
+    /** The house floats slowly to another place on the screen, on its own. */
+    fun glideTo(px: Int, py: Int, durationMs: Long) {
+        val p = params ?: return
+        glideAnimator?.cancel()
+        val sx = p.x
+        val sy = p.y
+        isGliding = true
+        val a = ValueAnimator.ofFloat(0f, 1f)
+        a.duration = durationMs
+        a.interpolator = AccelerateDecelerateInterpolator()
+        a.addUpdateListener {
+            val t = it.animatedFraction
+            x = (sx + (px - sx) * t).toInt()
+            y = (sy + (py - sy) * t).toInt()
+            p.x = x
+            p.y = y
+            updateWindow()
+        }
+        a.addListener(object : android.animation.AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: android.animation.Animator) {
+                isGliding = false
+            }
+        })
+        glideAnimator = a
+        a.start()
+    }
+
+    private fun updateDoor() {
         val v = view ?: return
-        v.doorTarget = 1f
-        v.invalidate()
-        handler.removeCallbacks(closeDoor)
-        handler.postDelayed(closeDoor, forMs)
+        v.doorTarget = if (near || forcedOpen) 1f else 0f
+    }
+
+    /** Opens the door by itself when a ghost is near it. */
+    fun setNear(isNear: Boolean) {
+        if (near == isNear) return
+        near = isNear
+        updateDoor()
+    }
+
+    /** Keeps the door open for a while (a baby is going in or out). */
+    fun openDoor(forMs: Long) {
+        forcedOpen = true
+        updateDoor()
+        handler.removeCallbacks(releaseForced)
+        handler.postDelayed(releaseForced, forMs)
     }
 
     fun remove() {
         handler.removeCallbacksAndMessages(null)
+        glideAnimator?.cancel()
+        isGliding = false
         val v = view ?: return
         try {
             wm.removeViewImmediate(v)

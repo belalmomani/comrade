@@ -39,7 +39,7 @@ class GhostWindow(
 
     interface Host {
         fun canDrag(who: GhostWindow): Boolean
-        fun onTap(who: GhostWindow)
+        fun onTap(who: GhostWindow, head: Boolean)
         fun onMoved(who: GhostWindow)
         fun onSessionEnded(who: GhostWindow, mode: FeedView.Mode, completed: Boolean)
     }
@@ -113,6 +113,73 @@ class GhostWindow(
         private set
 
     val isShown: Boolean get() = rootView != null
+
+    /** Character of a baby (null for the big ghost). */
+    val personality: Personality?
+        get() = if (id != "mother" && colorIndex >= 0) Family.personalityFor(colorIndex) else null
+
+    /** True while the ghost is asleep in its bed (or on its way there). */
+    var sleeping = false
+        private set
+
+    private fun applyOutfitTo(g: GhostView) {
+        g.setOutfit(
+            Wardrobe.equipped(context, Wardrobe.Slot.HAT),
+            Wardrobe.equipped(context, Wardrobe.Slot.SCARF),
+            Wardrobe.equipped(context, Wardrobe.Slot.WINGS),
+            Wardrobe.equipped(context, Wardrobe.Slot.GLOW),
+            Wardrobe.equipped(context, Wardrobe.Slot.TRAIL)
+        )
+    }
+
+    /** Puts on whatever is currently chosen in the wardrobe. */
+    fun applyOutfit() {
+        if (isShown) applyOutfitTo(ghost)
+    }
+
+    /** The head is the upper middle part of the ghost's box. */
+    private fun isHead(x: Float, y: Float, w: Int, h: Int): Boolean {
+        if (w <= 0 || h <= 0) return false
+        val fx = x / w
+        val fy = y / h
+        return fx in 0.25f..0.75f && fy in 0.28f..0.58f
+    }
+
+    /** Re-adds the window so it is drawn above the other overlay windows. */
+    fun bringToFront() {
+        val root = rootView ?: return
+        val p = params ?: return
+        try {
+            wm.removeViewImmediate(root)
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "Window was not attached", e)
+        }
+        try {
+            wm.addView(root, p)
+        } catch (e: RuntimeException) {
+            Log.e(TAG, "Could not re-add window", e)
+            rootView = null
+        }
+    }
+
+    /** Hops to its bed and falls asleep there. */
+    fun goToBed(x: Int, y: Int) {
+        if (!isShown) return
+        sleeping = true
+        ghost.setForcedSleep(false)
+        ghost.hopHappy()
+        moveTo(x, y, 1_400L) {
+            if (sleeping && isShown) ghost.setForcedSleep(true)
+        }
+    }
+
+    /** Wakes up and goes back to where it was. */
+    fun wakeUp(x: Int, y: Int) {
+        sleeping = false
+        if (!isShown) return
+        ghost.setForcedSleep(false)
+        moveTo(x, y, 1_200L)
+    }
 
     private val feedTimeout = Runnable { endSession(false) }
 
@@ -232,6 +299,9 @@ class GhostWindow(
         g.setBodyColor(if (colorIndex >= 0) Family.color(colorIndex) else null)
         // Babies play differently from the big ghost
         g.playful = scale < 1f
+        // Every baby has its own character; the big ghost has none
+        if (id != "mother" && colorIndex >= 0) g.personality = Family.personalityFor(colorIndex)
+        applyOutfitTo(g)
         val f = FeedView(context)
         f.ghost = g
         f.listener = this
@@ -376,7 +446,7 @@ class GhostWindow(
                         host.onMoved(this)
                     } else if (event.eventTime - event.downTime <= TAP_MAX_MS) {
                         // Only a short press without movement counts as a tap
-                        host.onTap(this)
+                        host.onTap(this, isHead(event.x, event.y, v.width, v.height))
                         v.performClick()
                     }
                     true

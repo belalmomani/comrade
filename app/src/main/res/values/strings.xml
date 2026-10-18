@@ -123,7 +123,6 @@
         <item>لنلعب معًا!</item>
         <item>أنت ذكي جدًا!</item>
     </string-array>
-    <string name="main_description">اضغط «إظهار الشبح» ليطفو فوق التطبيقات. يطلب الشبح الطعام كل ساعة والماء كل نصف ساعة، ويطعمه الطفل ويسقيه بسحب الطعام أو الكوب إلى فمه. تبيض الأم بيضة واحدة في اليوم بعد أن تُطعَم وتُسقى، وتفقس بعد ساعة عن صغير بلون جديد يسكن البيت الصغير بجانبها، ويخرج واحد منهم في كل مرة، وكل ابن يكبر قليلًا مع كل وجبة. إن أُهمل شبح بكى ثم مرض، وإن مرّت 24 ساعة بلا رعاية اختفى. وفي كل يوم فصل من فصول السنة الأربعة يمرّ نحو 15 دقيقة.</string>
     <string name="season_now">جرّب الفصل (التالي)</string>
     <string name="signature_label">بصمة التوقيع: %s</string>
     <string-array name="season_messages">
@@ -131,5 +130,37 @@
         <item>اليوم فصل الربيع… الأزهار تتطاير!</item>
         <item>اليوم فصل الصيف… الشمس مشرقة!</item>
         <item>اليوم فصل الخريف… أوراق الشجر تتساقط!</item>
+    </string-array>
+    <string name="main_description">اضغط «إظهار الشبح» ليطفو فوق التطبيقات. يطلب الشبح الطعام كل ساعة والماء كل نصف ساعة، ويطعمه الطفل ويسقيه بسحب الطعام أو الكوب إلى فمه. تبيض الأم بيضة واحدة في اليوم وتفقس بعد ساعة عن صغير بلون وطبع مختلف، يسكن البيت العائم الذي يتحرك وحده، ويخرج واحد منهم في كل مرة. عند اللمس يقفز الشبح أو يضحك أو يختبئ، وإن نُقر خمس مرات متتالية يبكي. ويذهب إلى سريره وينام ليلًا. وفي الخزانة قبعات وأوشحة وأجنحة تُفتح بالرعاية.</string>
+    <string name="notice_bedtime">تصبحون على خير! ذهبت الأشباح إلى أسرّتها.</string>
+    <string name="notice_wake">صباح الخير! استيقظت الأشباح.</string>
+    <string name="notice_gift">فتحت هدية جديدة: %1$s! ألبسها من «الخزانة».</string>
+    <string name="notice_hatched">وُلد %1$s! وهو %2$s.</string>
+    <string name="wardrobe_title">الخزانة</string>
+    <string name="wardrobe_slot_format">%1$s: %2$s</string>
+    <string name="wardrobe_unlocked">فُتحت كل الأغراض</string>
+    <string name="unlock_all_test">فتح كل الأغراض (للتجربة)</string>
+    <string name="slot_hat">القبعة</string>
+    <string name="slot_scarf">الوشاح</string>
+    <string name="slot_wings">الأجنحة</string>
+    <string name="slot_glow">اللون المضيء</string>
+    <string name="slot_trail">آثار النجوم</string>
+    <string name="item_none">بدون</string>
+    <string name="item_hat_party">قبعة الحفلة</string>
+    <string name="item_hat_crown">التاج</string>
+    <string name="item_hat_wizard">قبعة الساحر</string>
+    <string name="item_scarf_red">وشاح أحمر</string>
+    <string name="item_scarf_blue">وشاح أزرق</string>
+    <string name="item_wings">أجنحة صغيرة</string>
+    <string name="item_glow_pink">توهج وردي</string>
+    <string name="item_glow_cyan">توهج سماوي</string>
+    <string name="item_glow_gold">توهج ذهبي</string>
+    <string name="item_trail_stars">آثار النجوم</string>
+    <string-array name="personality_names">
+        <item>مرح كثير القفز</item>
+        <item>ضحوك</item>
+        <item>خجول</item>
+        <item>راقص</item>
+        <item>فضولي</item>
     </string-array>
 </resources>
