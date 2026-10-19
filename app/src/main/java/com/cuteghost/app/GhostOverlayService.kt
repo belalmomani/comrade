@@ -764,12 +764,6 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
         return Point(x, y)
     }
 
-    private fun placeHouse() {
-        val h = house ?: return
-        val spot = houseSpot(h.widthPx, h.heightPx) ?: return
-        h.moveTo(spot.x, spot.y)
-    }
-
     private fun score(w: GhostWindow, now: Long): Int =
         w.neglectLevel(now) * 10 + (if (w.pendingNeed(now) != null) 1 else 0)
 
