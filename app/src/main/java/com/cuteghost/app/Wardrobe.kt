@@ -15,6 +15,7 @@ object Wardrobe {
     private const val KEY_HATCHED = "stat_hatched"
     private const val KEY_DAYS = "stat_days"
     private const val KEY_LAST_DAY = "stat_last_day"
+    private const val KEY_STARS = "stat_stars"
 
     enum class Slot { HAT, SCARF, WINGS, GLOW, TRAIL }
 
@@ -43,7 +44,7 @@ object Wardrobe {
     fun isUnlocked(context: Context, item: Item): Boolean = item.id in unlockedIds(context)
 
     /** Items that the care statistics have earned so far. */
-    private fun earned(meals: Int, drinks: Int, hatched: Int, days: Int): Set<String> {
+    private fun earned(meals: Int, drinks: Int, hatched: Int, days: Int, stars: Int): Set<String> {
         val ids = HashSet<String>()
         if (meals >= 1) ids.add("hat_party")
         if (hatched >= 1) ids.add("hat_crown")
@@ -54,7 +55,8 @@ object Wardrobe {
         if (days >= 1) ids.add("glow_pink")
         if (days >= 3) ids.add("glow_cyan")
         if (days >= 7) ids.add("glow_gold")
-        if (hatched >= 2 || days >= 5) ids.add("trail_stars")
+        if (hatched >= 2 || days >= 5 || stars >= 5) ids.add("trail_stars")
+        if (stars >= 15) ids.add("glow_gold")
         return ids
     }
 
@@ -84,13 +86,33 @@ object Wardrobe {
         val have = unlockedIds(context)
         val now = earned(
             p.getInt(KEY_MEALS, 0), p.getInt(KEY_DRINKS, 0),
-            p.getInt(KEY_HATCHED, 0), p.getInt(KEY_DAYS, 0)
+            p.getInt(KEY_HATCHED, 0), p.getInt(KEY_DAYS, 0), p.getInt(KEY_STARS, 0)
         )
         val fresh = items.filter { it.id in now && it.id !in have }
         if (fresh.isNotEmpty()) {
             p.edit().putString(KEY_UNLOCKED, (have + fresh.map { it.id }).joinToString(",")).apply()
         }
         return fresh
+    }
+
+    // ---------- Stars and surprise gifts from the portal ----------
+
+    fun stars(context: Context): Int = prefs(context).getInt(KEY_STARS, 0)
+
+    /** Adds collected stars; returns the gifts that became available because of them. */
+    fun addStars(context: Context, count: Int): List<Item> {
+        val p = prefs(context)
+        p.edit().putInt(KEY_STARS, p.getInt(KEY_STARS, 0) + count).apply()
+        return unlockNew(context)
+    }
+
+    /** Unlocks one random item that is still locked, or returns null when everything is unlocked. */
+    fun giftRandom(context: Context): Item? {
+        val have = unlockedIds(context)
+        val locked = items.filter { it.id !in have }
+        val pick = locked.randomOrNull() ?: return null
+        prefs(context).edit().putString(KEY_UNLOCKED, (have + pick.id).joinToString(",")).apply()
+        return pick
     }
 
     /** For testing: unlocks everything. */

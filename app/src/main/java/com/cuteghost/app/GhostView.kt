@@ -663,6 +663,12 @@ class GhostView @JvmOverloads constructor(
         setOverride(Mood.CURIOUS, 5f)
     }
 
+    /** Shy: it blushes and looks down (used when it is discovered). */
+    fun showShy() {
+        if (feedState != FeedState.NONE || forcedSleep) return
+        setOverride(Mood.SHY, 2.0f)
+    }
+
     /** A baby plays on its own with one of its play moves. */
     fun playRandom() {
         if (feedState != FeedState.NONE || dragging || forcedSleep || tapAnim != null) return

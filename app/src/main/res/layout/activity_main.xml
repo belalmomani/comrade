@@ -161,6 +161,15 @@
             android:textSize="18sp"
             android:textStyle="bold" />
 
+        <TextView
+            android:id="@+id/starsText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:gravity="center"
+            android:textColor="@color/text_sub"
+            android:textSize="15sp" />
+
         <Button
             android:id="@+id/hatButton"
             android:layout_width="match_parent"
@@ -202,6 +211,22 @@
             android:layout_height="48dp"
             android:layout_marginTop="8dp"
             android:text="@string/unlock_all_test"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/peekButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="12dp"
+            android:text="@string/peek_now"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/portalButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="12dp"
+            android:text="@string/portal_now"
             android:textSize="15sp" />
 
         <Button

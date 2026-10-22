@@ -63,6 +63,8 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.eggButton).setOnClickListener { testEgg() }
         findViewById<Button>(R.id.neglectButton).setOnClickListener { testNeglect() }
         findViewById<Button>(R.id.seasonButton).setOnClickListener { testSeasonNow() }
+        findViewById<Button>(R.id.peekButton).setOnClickListener { testSurprise(true) }
+        findViewById<Button>(R.id.portalButton).setOnClickListener { testSurprise(false) }
         findViewById<Button>(R.id.checkUpdateButton).setOnClickListener { checkForUpdate(true) }
 
         val namesField = findViewById<EditText>(R.id.namesField)
@@ -233,6 +235,7 @@ class MainActivity : Activity() {
     }
 
     private fun refreshWardrobe() {
+        findViewById<TextView>(R.id.starsText).text = getString(R.string.stars_label, Wardrobe.stars(this))
         for ((buttonId, slot, labelRes) in wardrobeSlots) {
             val item = Wardrobe.equippedItem(this, slot)
             val itemName = if (item != null) getString(item.nameRes) else getString(R.string.item_none)
@@ -248,6 +251,19 @@ class MainActivity : Activity() {
             GhostOverlayService.outfitNow(this)
         } catch (e: RuntimeException) {
             // the outfit is applied at the next refresh anyway
+        }
+    }
+
+    /** Test buttons for the surprises: a baby peeking from the edge, or the magic portal. */
+    private fun testSurprise(peek: Boolean) {
+        if (!GhostOverlayService.isRunning) {
+            Toast.makeText(this, R.string.feed_need_ghost, Toast.LENGTH_LONG).show()
+            return
+        }
+        try {
+            if (peek) GhostOverlayService.peekNow(this) else GhostOverlayService.portalNow(this)
+        } catch (e: RuntimeException) {
+            Toast.makeText(this, R.string.start_failed, Toast.LENGTH_LONG).show()
         }
     }
 

@@ -33,7 +33,8 @@ import kotlin.random.Random
  * Each visible ghost lives in its own [GhostWindow]; this service decides who may act so that
  * movements never overlap, and it handles neglect, loss and the encouraging texts.
  */
-class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
+class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
+    PeekWindow.Host, PortalWindow.Host, PickupWindow.Listener {
 
     companion object {
         @Volatile
@@ -99,6 +100,11 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
         private const val ACTION_OUTFIT = "com.companion.theghost.OUTFIT"
         private const val PROXIMITY_MS = 400L
         private const val NEAR_DOOR_DP = 80
+        private const val PEEK_COOLDOWN_MS = 4L * 60L * 1000L
+        private const val PORTAL_COOLDOWN_MS = 8L * 60L * 1000L
+        private const val VISIT_MS = 60_000L
+        private const val ACTION_PEEK_NOW = "com.companion.theghost.PEEK_NOW"
+        private const val ACTION_PORTAL_NOW = "com.companion.theghost.PORTAL_NOW"
         private const val HOUSE_DRIFT_MIN_MS = 25_000L
         private const val HOUSE_DRIFT_MAX_MS = 45_000L
         private const val EXTRA_WATER = "water"
@@ -142,6 +148,22 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
             startService(
                 context,
                 Intent(context, GhostOverlayService::class.java).setAction(ACTION_SEASON_NOW)
+            )
+        }
+
+        /** A baby peeks in from the edge of the screen right now (testing). */
+        fun peekNow(context: Context) {
+            startService(
+                context,
+                Intent(context, GhostOverlayService::class.java).setAction(ACTION_PEEK_NOW)
+            )
+        }
+
+        /** Opens the magic portal right now (testing). */
+        fun portalNow(context: Context) {
+            startService(
+                context,
+                Intent(context, GhostOverlayService::class.java).setAction(ACTION_PORTAL_NOW)
             )
         }
 
@@ -192,6 +214,17 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
     private var lastLoopWall = 0L
     private var nextHouseDriftAt = 0L
 
+    // Surprises: a baby peeking from the edge, the magic portal and its visitor
+    private var peek: PeekWindow? = null
+    private var peeker: GhostWindow? = null
+    private var lastPeekAt = 0L
+    private var portal: PortalWindow? = null
+    private var lastPortalAt = 0L
+    private var visitor: GhostWindow? = null
+    private var visitorLeaving = false
+    private var visitorLeaveAt = 0L
+    private val pickups = ArrayList<PickupWindow>()
+
     private val loop = object : Runnable {
         override fun run() {
             val nowWall = System.currentTimeMillis()
@@ -207,6 +240,9 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
             maybeLayEgg()
             manageHouse()
             maybeDriftHouse()
+            maybePeek()
+            maybeOpenPortal()
+            checkVisitor()
             maybeSpeakPhrase()
             maybeStartSeason()
             applyOutfitToAll()
@@ -224,6 +260,11 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
                     if (b.personality == Personality.SHY && Random.nextFloat() < 0.5f) continue
                     val inPlace = if (b.personality == Personality.JUMPER) 0.15f else 0.3f
                     if (Random.nextFloat() < inPlace) playInPlace(b) else playHop(b)
+                }
+                // The stranger from the portal plays with the family too
+                val v = visitor
+                if (v != null && v.isShown && !visitorLeaving) {
+                    if (Random.nextFloat() < 0.3f) playInPlace(v) else playHop(v)
                 }
             }
             handler.postDelayed(this, PLAY_LOOP_MS)
@@ -297,6 +338,10 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
             startSeason(testSeason, SEASON_TEST_MS)
         } else if (action == ACTION_OUTFIT) {
             applyOutfitToAll()
+        } else if (action == ACTION_PEEK_NOW) {
+            peekNow()
+        } else if (action == ACTION_PORTAL_NOW) {
+            if (portal == null) openPortal()
         }
         return START_NOT_STICKY
     }
@@ -309,6 +354,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
         voice = null
         notice?.dismissNow()
         notice = null
+        cancelSurprises()
         room?.remove()
         room = null
         seasonWindow?.remove()
@@ -772,7 +818,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
      * outside goes back in, and a baby that needs food or water comes out for it.
      */
     private fun manageHouse() {
-        if (babies.isEmpty() || activeSession != null || bedtimeActive) return
+        if (babies.isEmpty() || activeSession != null || bedtimeActive || peeker != null) return
         if (house == null) showHouse()
         if (house == null) return
         val now = System.currentTimeMillis()
@@ -1014,6 +1060,8 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
         val list = ArrayList<Rect>()
         for (w in shownGhosts()) if (w !== exclude) list.add(w.rect())
         egg?.let { list.add(it.rect()) }
+        visitor?.let { if (it.isShown) list.add(it.rect()) }
+        portal?.let { list.add(it.rect()) }
         if (includeHouse) house?.let { list.add(it.rect()) }
         return list
     }
@@ -1180,6 +1228,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
         room = r
         bedtimeActive = true
         lastLoopWall = System.currentTimeMillis()
+        cancelSurprises()
 
         // The house floats out of the way, to the top right
         house?.let { it.glideTo(dm.widthPixels - it.widthPx - dp(12), dp(90), 3_000L) }
@@ -1264,6 +1313,242 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host {
             val dir = if (targetX < g.rect().centerX()) -1f else 1f
             g.ghost.showCurious(dir)
         }
+    }
+
+    // ---------- Surprises: a ghost peeking from the edge, the magic portal ----------
+
+    private fun pickPeeker(now: Long): GhostWindow? = outside.filter {
+        it.isShown && it !in entering && it !in dying && !it.isMoving && !it.userDragging &&
+            !it.sleeping && it.neglectLevel(now) == 0 && it.pendingNeed(now) == null
+    }.randomOrNull()
+
+    /** Sometimes a baby disappears and peeks in from the screen's edge to see what the others do. */
+    private fun maybePeek() {
+        if (peek != null || portal != null || peeker != null || bedtimeActive || activeSession != null) return
+        val now = System.currentTimeMillis()
+        if (now - serviceStartedAt < 120_000L || now - lastPeekAt < PEEK_COOLDOWN_MS) return
+        if (Random.nextFloat() > 0.15f) return // random: not every time
+        val b = pickPeeker(now) ?: return
+        startPeek(b)
+    }
+
+    private fun peekNow() {
+        if (peek != null || peeker != null || bedtimeActive || activeSession != null) return
+        val b = pickPeeker(System.currentTimeMillis())
+        if (b == null) {
+            notice?.show(getString(R.string.notice_no_baby), 5_000L)
+            return
+        }
+        startPeek(b)
+    }
+
+    private fun startPeek(b: GhostWindow) {
+        val wm = windowManager ?: return
+        val pw = PeekWindow(this, wm, b.colorIndex, b.scale, b.personality, this)
+        lastPeekAt = System.currentTimeMillis()
+        val x = b.restX
+        val y = b.restY
+        // The ghost disappears from the screen...
+        b.remove()
+        outside.remove(b)
+        entering.remove(b)
+        peeker = b
+        if (pw.start()) {
+            peek = pw
+        } else {
+            peeker = null
+            returnOutside(b, x, y)
+        }
+    }
+
+    override fun onPeekEnded(jumpedInside: Boolean, centerX: Int, centerY: Int) {
+        val b = peeker
+        peek = null
+        peeker = null
+        lastPeekAt = System.currentTimeMillis()
+        if (b == null || destroyed) return
+        // Tapped: it jumps inside. Otherwise it ran away and is back in the house.
+        if (jumpedInside) returnOutside(b, centerX - b.widthPx / 2, centerY - b.heightPx / 2)
+    }
+
+    private fun returnOutside(b: GhostWindow, x: Int, y: Int) {
+        if (destroyed || b in dying) return
+        if (b.show(x, y)) {
+            outside.add(b)
+            b.fadeIn(300L)
+            b.ghost.hopHappy()
+            b.ghost.setNightSleepy(isSleepyHour(hourNow()))
+            b.ghost.setNeglect(minOf(3, b.neglectLevel(System.currentTimeMillis())))
+            if (activeSession != null) b.setTouchable(false)
+        }
+    }
+
+    private fun maybeOpenPortal() {
+        if (portal != null || peek != null || bedtimeActive || activeSession != null) return
+        val now = System.currentTimeMillis()
+        if (now - serviceStartedAt < 180_000L || now - lastPortalAt < PORTAL_COOLDOWN_MS) return
+        if (Random.nextFloat() > 0.08f) return
+        openPortal()
+    }
+
+    /** A magic portal opens: a head comes out, then a star or a gift, or a stranger who visits. */
+    private fun openPortal() {
+        val wm = windowManager ?: return
+        if (portal != null || bedtimeActive) return
+        val dm = resources.displayMetrics
+        val w = PortalWindow.widthPx(dm.density)
+        val h = PortalWindow.heightPx(dm.density)
+        val occupied = occupiedRects()
+        var spot: Point? = null
+        for (attempt in 0 until 12) {
+            val x = Random.nextInt(maxOf(1, dm.widthPixels - w))
+            val y = dp(80) + Random.nextInt(maxOf(1, dm.heightPixels - h - dp(80) - dp(100)))
+            if (isSpotFree(x, y, w, h, occupied)) {
+                spot = Point(x, y)
+                break
+            }
+        }
+        val where = spot ?: findFreeSpot(w, h, mother?.rect() ?: Rect(0, 0, 0, 0))
+        val roll = Random.nextFloat()
+        val event = when {
+            roll < 0.35f -> PortalWindow.Event.STAR
+            roll < 0.60f -> PortalWindow.Event.GIFT
+            roll < 0.85f -> PortalWindow.Event.VISITOR
+            else -> PortalWindow.Event.EMPTY
+        }
+        val pw = PortalWindow(this, wm, this)
+        if (pw.show(where.x, where.y, event)) {
+            portal = pw
+            lastPortalAt = System.currentTimeMillis()
+            showCuriousAll(where.x + w / 2)
+        }
+    }
+
+    override fun onToss(isGift: Boolean, screenX: Int, screenY: Int) {
+        val wm = windowManager ?: return
+        val d = resources.displayMetrics.density
+        val angle = Random.nextFloat() * 6.2831855f
+        val radius = (90f + Random.nextFloat() * 60f) * d
+        val tx = (screenX + cos(angle) * radius).toInt()
+        val ty = (screenY + sin(angle) * radius * 0.6f).toInt()
+        val pk = PickupWindow(this, wm, isGift, this)
+        if (pk.show(screenX, screenY, tx, ty)) pickups.add(pk)
+    }
+
+    override fun onVisitorOut(colorIndex: Int, screenX: Int, screenY: Int) {
+        val wm = windowManager ?: return
+        if (visitor != null) return
+        val v = GhostWindow(this, wm, "visitor", 0.7f, colorIndex, this)
+        if (!v.show(screenX - v.widthPx / 2, screenY - v.heightPx)) return
+        v.ghost.setOutfit(1 + Random.nextInt(3), 0, 0, 0, 0)
+        v.fadeIn(300L)
+        v.ghost.hopHappy()
+        visitor = v
+        visitorLeaving = false
+        visitorLeaveAt = System.currentTimeMillis() + VISIT_MS
+        showCuriousAll(screenX)
+        notice?.show(getString(R.string.notice_visitor), 6_000L)
+    }
+
+    override fun onCloseRequested(): Boolean {
+        if (visitor != null) {
+            visitorGoHome() // the visitor goes home first, then the portal closes
+            return false
+        }
+        return true
+    }
+
+    override fun onClosed() {
+        portal = null
+        lastPortalAt = System.currentTimeMillis()
+    }
+
+    private fun checkVisitor() {
+        if (visitor == null) return
+        if (System.currentTimeMillis() >= visitorLeaveAt) visitorGoHome()
+    }
+
+    private fun visitorGoHome() {
+        if (visitor == null || visitorLeaving) return
+        visitorLeaving = true
+        visitorStep()
+    }
+
+    /** The stranger hops back to the portal (in steps if it is far) and goes in. */
+    private fun visitorStep() {
+        if (destroyed) return
+        val v = visitor ?: return
+        val p = portal
+        if (p == null || !v.isShown) {
+            v.remove()
+            visitor = null
+            return
+        }
+        if (activeSession != null || v.userDragging || v.isMoving) {
+            handler.postDelayed({ visitorStep() }, 1_500L)
+            return
+        }
+        val d = resources.displayMetrics.density
+        val r = p.rect()
+        val tx = r.centerX() - v.widthPx / 2
+        val ty = p.mouthY() - v.heightPx
+        val dist = hypot((tx - v.restX).toDouble(), (ty - v.restY).toDouble()).toFloat()
+        if (dist > 150f * d) {
+            val step = 130f * d
+            v.hopTo(
+                (v.restX + (tx - v.restX) / dist * step).toInt(),
+                (v.restY + (ty - v.restY) / dist * step).toInt()
+            )
+            handler.postDelayed({ visitorStep() }, 800L)
+            return
+        }
+        v.hopTo(tx, ty)
+        handler.postDelayed({
+            if (destroyed) return@postDelayed
+            v.fadeOutAndRemove(300L) {
+                if (visitor === v) visitor = null
+                portal?.visitorFinished()
+            }
+        }, 850L)
+    }
+
+    /** The child touched a star or a gift: it becomes a collected star or a new wardrobe item. */
+    override fun onCollected(w: PickupWindow, isGift: Boolean) {
+        pickups.remove(w)
+        val text: String
+        if (isGift) {
+            val item = Wardrobe.giftRandom(this)
+            if (item != null) {
+                text = giftText(listOf(item))
+            } else {
+                // everything is unlocked already: stars instead
+                val extra = Wardrobe.addStars(this, 3)
+                text = getString(R.string.notice_gift_duplicate) +
+                    (if (extra.isNotEmpty()) "\n" + giftText(extra) else "")
+            }
+        } else {
+            val unlocked = Wardrobe.addStars(this, 1)
+            text = getString(R.string.notice_star, Wardrobe.stars(this)) +
+                (if (unlocked.isNotEmpty()) "\n" + giftText(unlocked) else "")
+        }
+        notice?.show(text, 6_000L)
+    }
+
+    override fun onExpired(w: PickupWindow) {
+        pickups.remove(w)
+    }
+
+    /** At bedtime and when the app closes, all surprises disappear. */
+    private fun cancelSurprises() {
+        peek?.cancel()
+        peek = null
+        peeker = null // it is hidden already: it simply stays in the house
+        portal?.closeNow()
+        portal = null
+        visitor?.remove()
+        visitor = null
+        for (p in pickups.toList()) p.removeNow()
+        pickups.clear()
     }
 
     // ---------- App updates ----------
