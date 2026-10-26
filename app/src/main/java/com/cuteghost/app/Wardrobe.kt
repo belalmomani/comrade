@@ -106,6 +106,15 @@ object Wardrobe {
         return unlockNew(context)
     }
 
+    /** Spends stars (for example to unlock a house). Returns false when there are not enough. */
+    fun spendStars(context: Context, count: Int): Boolean {
+        val p = prefs(context)
+        val have = p.getInt(KEY_STARS, 0)
+        if (have < count) return false
+        p.edit().putInt(KEY_STARS, have - count).apply()
+        return true
+    }
+
     /** Unlocks one random item that is still locked, or returns null when everything is unlocked. */
     fun giftRandom(context: Context): Item? {
         val have = unlockedIds(context)

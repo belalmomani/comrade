@@ -9,13 +9,15 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.WindowManager
 import android.view.animation.AccelerateDecelerateInterpolator
 
 /** The floating house. It moves by itself and never takes touches. */
 class HouseWindow(
     private val context: Context,
-    private val wm: WindowManager
+    private val wm: WindowManager,
+    private val onTap: () -> Unit = {}
 ) {
     companion object {
         const val WIDTH_DP = 96
@@ -55,8 +57,7 @@ class HouseWindow(
             heightPx,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         )
         p.gravity = Gravity.TOP or Gravity.START
@@ -65,6 +66,15 @@ class HouseWindow(
         p.x = x
         p.y = y
         val v = HouseView(context)
+        v.setLook(HomeStore.selected(context), HomeStore.level(context, HomeStore.selected(context)))
+        // Touching the house opens it: the inside with the sleeping ghosts
+        v.setOnTouchListener { _, e ->
+            if (e.actionMasked == MotionEvent.ACTION_UP && e.eventTime - e.downTime <= 450L) {
+                openDoor(1_200L)
+                onTap()
+            }
+            true
+        }
         return try {
             wm.addView(v, p)
             view = v
@@ -74,6 +84,12 @@ class HouseWindow(
             Log.e("HouseWindow", "Could not add the house", e)
             false
         }
+    }
+
+    /** Takes the design and level that were chosen in the house screen. */
+    fun applyLook() {
+        val id = HomeStore.selected(context)
+        view?.setLook(id, HomeStore.level(context, id))
     }
 
     private fun updateWindow() {

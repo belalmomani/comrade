@@ -53,6 +53,9 @@ class MainActivity : Activity() {
         )
 
         findViewById<Button>(R.id.showButton).setOnClickListener { proceedShow() }
+        findViewById<Button>(R.id.houseButton).setOnClickListener {
+            startActivity(Intent(this, HouseActivity::class.java))
+        }
         findViewById<Button>(R.id.hideButton).setOnClickListener {
             pendingShow = false
             GhostOverlayService.stop(this)

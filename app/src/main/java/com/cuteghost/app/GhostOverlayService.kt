@@ -635,7 +635,14 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
                 who.applyScale(Family.babyScale(who.meals))
             }
         }
-        if (completed) announceGifts(Wardrobe.recordCare(this, mode == FeedView.Mode.FOOD, dayNumber()))
+        if (completed) {
+            // Care earns a star and a building material for the houses
+            HomeStore.addMaterials(this, 1)
+            announceGifts(
+                Wardrobe.recordCare(this, mode == FeedView.Mode.FOOD, dayNumber()) +
+                    Wardrobe.addStars(this, 1)
+            )
+        }
         persist()
         updateNeglectVisuals()
         handler.postDelayed({ if (!destroyed) maybeLayEgg() }, CELEBRATION_LOCK_MS + 400L)
@@ -792,7 +799,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
     private fun showHouse() {
         if (house != null) return
         val wm = windowManager ?: return
-        val h = HouseWindow(this, wm)
+        val h = HouseWindow(this, wm) { openHouseScreen() }
         val spot = houseSpot(h.widthPx, h.heightPx) ?: return
         if (h.show(spot.x, spot.y)) house = h
     }
@@ -1043,6 +1050,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
                 val trait = traits[Family.personalityFor(b.colorIndex).ordinal]
                 var text = getString(R.string.notice_hatched, ghostTitle(b), trait)
                 val gifts = Wardrobe.recordHatched(this)
+                HomeStore.addMaterials(this, 3)
                 if (gifts.isNotEmpty()) text += "\n" + giftText(gifts)
                 notice?.show(text, 9_000L)
                 showCuriousAll(bx + b.widthPx / 2)
@@ -1296,6 +1304,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
 
     private fun applyOutfitToAll() {
         for (w in shownGhosts()) w.applyOutfit()
+        house?.applyLook()
     }
 
     private fun giftText(items: List<Wardrobe.Item>): String =
@@ -1549,6 +1558,20 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         visitor = null
         for (p in pickups.toList()) p.removeNow()
         pickups.clear()
+    }
+
+    /** Touching the floating house opens the house screen (the inside with the sleeping ghosts). */
+    private fun openHouseScreen() {
+        if (activeSession != null) return
+        try {
+            startActivity(
+                Intent(this, HouseActivity::class.java)
+                    .putExtra(HouseActivity.EXTRA_INTERIOR, true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "Could not open the house screen", e)
+        }
     }
 
     // ---------- App updates ----------

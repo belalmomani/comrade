@@ -96,6 +96,14 @@
             android:textStyle="bold" />
 
         <Button
+            android:id="@+id/houseButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="20dp"
+            android:text="@string/house_open"
+            android:textSize="18sp" />
+
+        <Button
             android:id="@+id/showButton"
             android:layout_width="match_parent"
             android:layout_height="56dp"

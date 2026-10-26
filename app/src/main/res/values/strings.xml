@@ -170,4 +170,5 @@
     <string name="notice_gift_duplicate">كل الأغراض مفتوحة، فحصلت على 3 نجوم!</string>
     <string name="notice_visitor">خرج ضيف غريب من البوابة! سيزورنا دقيقة.</string>
     <string name="notice_no_baby">لا يوجد ابن في الخارج الآن.</string>
+    <string name="house_open">منزل الشبح</string>
 </resources>
