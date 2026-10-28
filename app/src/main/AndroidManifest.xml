@@ -26,6 +26,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".HouseActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
         <receiver
             android:name=".InstallResultReceiver"
             android:exported="false" />
