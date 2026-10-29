@@ -43,6 +43,8 @@ class PlaygroundActivity : Activity() {
     private var inGame = false
     private var gameGhost: GhostView? = null
     private var balloonButton: Button? = null
+    private var rider: GhostView? = null
+    private var riderHopAt = 0f
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -138,12 +140,22 @@ class PlaygroundActivity : Activity() {
             }
             ghost.playful = true
             ghost.setOnClickListener { ghost.showFed() }
-            root.addView(ghost, FrameLayout.LayoutParams(gw, gh))
+            root.addView(ghost, FrameLayout.LayoutParams(gw, gh, Gravity.TOP or Gravity.LEFT))
             val p = Player(ghost, i)
             p.toy = i % 3
             p.prev = p.toy
             players.add(p)
         }
+
+        // A little ghost rides in the balloon floating in the sky; touching it starts the game
+        val rw = dp(44)
+        val rh = (rw * 1.28f).toInt()
+        val passenger = GhostView(this)
+        passenger.setBodyColor(Family.color(3))
+        passenger.playful = true
+        passenger.setOnClickListener { startBalloon() }
+        root.addView(passenger, FrameLayout.LayoutParams(rw, rh, Gravity.TOP or Gravity.LEFT))
+        rider = passenger
 
         val bar = android.widget.LinearLayout(this)
         bar.orientation = android.widget.LinearLayout.HORIZONTAL
@@ -252,6 +264,16 @@ class PlaygroundActivity : Activity() {
             p.view.translationY = y - gh / 2f
             p.view.rotation = rot
         }
+        rider?.let { r ->
+            val rw = dp(44).toFloat()
+            val rh = rw * 1.28f
+            r.translationX = PlayGeo.balloonX(w) - rw / 2f
+            r.translationY = PlayGeo.balloonY(h, t) + 0.075f * w * 1.1f - rh * 0.85f
+            if (t >= riderHopAt) {
+                riderHopAt = t + 6f
+                r.hopHappy()
+            }
+        }
     }
 
     // ---------------------------------------------------------------- the balloon game
@@ -285,7 +307,7 @@ class PlaygroundActivity : Activity() {
         val ghost = GhostView(this)
         ghost.playful = true
         ghost.showFed()
-        root.addView(ghost, FrameLayout.LayoutParams(gw, gh))
+        root.addView(ghost, FrameLayout.LayoutParams(gw, gh, Gravity.TOP or Gravity.LEFT))
         gameGhost = ghost
         val hint = label("حرّك إصبعك لتقود المنطاد واجمع النجوم", 15f)
         val lp = FrameLayout.LayoutParams(match, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP)

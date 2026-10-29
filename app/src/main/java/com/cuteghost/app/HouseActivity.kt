@@ -262,6 +262,7 @@ class HouseActivity : Activity() {
             ghost.setForcedSleep(true)
             ghost.setOnClickListener { wake(ghost) }
             val lp = FrameLayout.LayoutParams((box[2] * s).toInt(), (box[3] * s).toInt())
+            lp.gravity = Gravity.TOP or Gravity.LEFT
             lp.leftMargin = (box[0] * s).toInt()
             lp.topMargin = (oy + box[1] * s).toInt()
             layer.addView(ghost, lp)
