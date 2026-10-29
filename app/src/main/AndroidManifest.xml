@@ -27,6 +27,11 @@
         </activity>
 
         <activity
+            android:name=".PlaygroundActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <activity
             android:name=".HouseActivity"
             android:exported="false"
             android:screenOrientation="portrait" />

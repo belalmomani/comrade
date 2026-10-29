@@ -11,19 +11,19 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.os.SystemClock
 import android.view.View
-import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * The inside of a house in layers (unit box 100 x 150): the back layer is the room (wall,
- * window with moving sky, floor, rug, beds), then the sleeping ghosts are views placed between
- * the layers, and the front layer (bed covers, lamp glow, fairy lights) is drawn over them.
+ * The inside of a house in two layers (unit box 100 x 150). The back layer is the room with its
+ * furniture, the sleeping ghosts are views between the layers, and the front layer (bed covers,
+ * magic decorations, lamp glow, lights) is drawn over them. What is placed comes from [state].
  */
 class RoomSceneView(
     context: Context,
     private val houseId: Int,
     private val level: Int,
-    private val front: Boolean
+    private val front: Boolean,
+    private val state: SceneState
 ) : View(context) {
 
     companion object {
@@ -64,17 +64,10 @@ class RoomSceneView(
         strokeJoin = Paint.Join.ROUND
         strokeCap = Paint.Cap.ROUND
     }
-    private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        shader = RadialGradient(
-            0f, 0f, 22f,
-            Color.parseColor("#AAFFE680"), Color.parseColor("#00FFE680"),
-            Shader.TileMode.CLAMP
-        )
-    }
+    private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
     private val skyShader = LinearGradient(0f, 10f, 0f, 44f, theme.sky1, theme.sky2, Shader.TileMode.CLAMP)
     private val rect = RectF()
     private val path = Path()
-
     private var clock = 0f
     private var running = false
     private var lastTick = 0L
@@ -121,6 +114,17 @@ class RoomSceneView(
         c.drawRoundRect(rect, rad, rad, fill)
     }
 
+    /** Draws an item scaled into the box x, y, w, h of the room. */
+    private fun put(c: Canvas, item: Furn?, x: Float, y: Float, w: Float, h: Float) {
+        if (item == null) return
+        val sz = FurnArt.sizeOf(item.slot)
+        c.save()
+        c.translate(x, y)
+        c.scale(w / sz[0], h / sz[1])
+        FurnArt.draw(c, item, clock)
+        c.restore()
+    }
+
     override fun onDraw(canvas: Canvas) {
         val s = width / SCENE_W
         val oy = (height - SCENE_H * s) / 2f
@@ -131,22 +135,27 @@ class RoomSceneView(
         canvas.restore()
     }
 
-    // ================= back layer: the room =================
+    // ================= back layer: the room and its furniture =================
     private fun drawBack(c: Canvas) {
         val night = houseId == 4
 
-        // Wall with soft stripes
-        f(theme.wall)
-        rect.set(0f, 0f, 100f, 104f)
-        c.drawRect(rect, fill)
-        f(Color.WHITE, 40)
-        var x = 0f
-        while (x < 100f) {
-            rect.set(x, 0f, x + 10f, 104f)
+        // Wall
+        val wallItem = state.itemFor(FSlot.WALL)
+        if (wallItem != null) {
+            put(c, wallItem, 0f, 0f, 100f, 104f)
+        } else {
+            f(theme.wall)
+            rect.set(0f, 0f, 100f, 104f)
             c.drawRect(rect, fill)
-            x += 20f
+            f(Color.WHITE, 40)
+            var x = 0f
+            while (x < 100f) {
+                rect.set(x, 0f, x + 10f, 104f)
+                c.drawRect(rect, fill)
+                x += 20f
+            }
         }
-        if (night) {
+        if (night && wallItem == null) {
             for (i in 0 until 14) {
                 f(Color.parseColor("#FFE27A"), (120f + 100f * sin(clock * 2f + i)).toInt().coerceIn(0, 255))
                 c.drawCircle(4f + (i * 29f) % 92f, 4f + (i * 17f) % 8f + (i % 3) * 14f, 0.8f, fill)
@@ -185,7 +194,6 @@ class RoomSceneView(
             }
         }
         if (level >= 4) {
-            // the balcony garden seen through the window
             f(mix(theme.accent, Color.WHITE, 0.55f))
             rect.set(30f, 38f, 70f, 44f)
             c.drawRect(rect, fill)
@@ -199,49 +207,39 @@ class RoomSceneView(
             }
         }
         c.restore()
-        rect.set(30f, 10f, 70f, 44f)
-        line.color = theme.accent
-        line.strokeWidth = 2f
-        c.drawRoundRect(rect, 16f, 16f, line)
-        line.strokeWidth = 1.2f
-        c.drawLine(50f, 10f, 50f, 44f, line)
-        c.drawLine(30f, 27f, 70f, 27f, line)
+        FurnArt.windowFrame(c, state.itemFor(FSlot.WINDOW), theme.accent, clock)
         rr(c, 28f, 44f, 72f, 47f, 1.5f, mix(theme.accent, Color.WHITE, 0.4f))
 
-        // Curtains
-        val curtain = mix(theme.accent, Color.WHITE, 0.55f)
-        rr(c, 22f, 8f, 30f, 46f, 3f, curtain)
-        rr(c, 70f, 8f, 78f, 46f, 3f, curtain)
-        rr(c, 22f, 24f, 30f, 27f, 1f, mix(curtain, Color.BLACK, 0.2f))
-        rr(c, 70f, 24f, 78f, 27f, 1f, mix(curtain, Color.BLACK, 0.2f))
+        // Curtains (the right one is the left one turned around)
+        val curtain = state.itemFor(FSlot.CURTAIN)
+        put(c, curtain, 22f, 8f, 8f, 38f)
+        if (curtain != null) {
+            c.save()
+            c.translate(78f, 8f)
+            c.scale(-1f, 1f)
+            put(c, curtain, 0f, 0f, 8f, 38f)
+            c.restore()
+        }
 
-        // Picture on the wall
-        rr(c, 10f, 54f, 26f, 67f, 1.5f, Color.parseColor("#C9A57A"))
-        rr(c, 11.5f, 55.5f, 24.5f, 65.5f, 1f, Color.parseColor("#BFD9FF"))
-        f(Color.WHITE)
-        rect.set(14f, 58f, 22f, 62f)
-        c.drawOval(rect, fill)
-        c.drawCircle(17f, 58f, 2.4f, fill)
+        // Things on the wall
+        put(c, state.itemFor(FSlot.CLOSET), 2f, 10f, 18f, 30f)
+        put(c, state.itemFor(FSlot.CLOCK), 84f, 12f, 12f, 12f)
+        put(c, state.itemFor(FSlot.SHELF), 54f, 46f, 30f, 14f)
+        put(c, state.itemFor(FSlot.PICTURE), 10f, 54f, 16f, 13f)
+        put(c, state.itemFor(FSlot.LAMP), 84f, 52f, 12f, 16f)
 
-        // Moon lamp on the wall (its glow is in the front layer)
-        f(Color.parseColor("#FFE27A"))
-        c.drawCircle(90f, 60f, 4.2f, fill)
-        f(theme.wall)
-        c.drawCircle(92.2f, 58.8f, 3.6f, fill)
-
-        // Floor, planks and baseboard
-        f(theme.floor)
-        rect.set(0f, 104f, 100f, 150f)
-        c.drawRect(rect, fill)
-        line.color = mix(theme.floor, Color.BLACK, 0.12f)
-        line.strokeWidth = 0.6f
-        c.drawLine(0f, 118f, 100f, 118f, line)
-        c.drawLine(0f, 132f, 100f, 132f, line)
-        var px = 8f
-        while (px < 100f) {
-            c.drawLine(px, 104f, px + 6f, 118f, line)
-            c.drawLine(px + 14f, 118f, px + 8f, 132f, line)
-            px += 20f
+        // Floor
+        val floorItem = state.itemFor(FSlot.FLOOR)
+        if (floorItem != null) {
+            put(c, floorItem, 0f, 104f, 100f, 46f)
+        } else {
+            f(theme.floor)
+            rect.set(0f, 104f, 100f, 150f)
+            c.drawRect(rect, fill)
+            line.color = mix(theme.floor, Color.BLACK, 0.12f)
+            line.strokeWidth = 0.6f
+            c.drawLine(0f, 118f, 100f, 118f, line)
+            c.drawLine(0f, 132f, 100f, 132f, line)
         }
         f(mix(theme.floor, Color.BLACK, 0.2f))
         rect.set(0f, 102f, 100f, 105f)
@@ -252,26 +250,22 @@ class RoomSceneView(
             c.drawLine(0f, 101f, 100f, 101f, line)
         }
 
-        // Round rug
-        f(mix(theme.accent, Color.WHITE, 0.6f))
-        rect.set(18f, 124f, 82f, 144f)
-        c.drawOval(rect, fill)
-        line.color = mix(theme.accent, Color.WHITE, 0.3f)
-        line.strokeWidth = 1f
-        rect.set(26f, 128f, 74f, 140f)
-        c.drawOval(rect, line)
+        // Living room
+        put(c, state.itemFor(FSlot.RUG), 18f, 124f, 64f, 20f)
+        put(c, state.itemFor(FSlot.SOFA), 3f, 112f, 36f, 20f)
+        put(c, state.itemFor(FSlot.TABLE), 62f, 122f, 16f, 12f)
+        put(c, state.itemFor(FSlot.PLANT), 86f, 112f, 12f, 18f)
 
-        // Beds (frame, mattress and pillow); the covers are in the front layer
+        // Beds: frame and pillow (the cover is in the front layer)
         val n = bedCount(level)
         val xs = bedXs(n)
         val w = bedWidth(n)
-        val pillows = intArrayOf(Color.parseColor("#FFD6E8"), Color.parseColor("#D6E4FF"), Color.parseColor("#FFF0B3"))
+        val bed = state.itemFor(FSlot.BED)
+        val pillow = state.itemFor(FSlot.PILLOW)
         for (i in 0 until n) {
             val cx = xs[i]
-            rr(c, cx - w / 2f, 86f, cx + w / 2f, 108f, 4f, Color.parseColor("#D8CCFF"))
-            rr(c, cx - w / 2f - 1f, 80f, cx - w / 2f + 3f, 108f, 2f, Color.parseColor("#B9A8F5"))
-            rr(c, cx - w / 2f + 1.5f, 89f, cx + w / 2f - 1.5f, 99f, 3f, Color.WHITE)
-            rr(c, cx - w * 0.40f, 83.5f, cx - w * 0.02f, 92f, 3.5f, pillows[i % 3])
+            put(c, bed, cx - w / 2f, 86f, w, 22f)
+            put(c, pillow, cx - w * 0.40f, 83.5f, w * 0.38f, 8.5f)
         }
     }
 
@@ -280,37 +274,47 @@ class RoomSceneView(
         val n = bedCount(level)
         val xs = bedXs(n)
         val w = bedWidth(n)
-        val covers = intArrayOf(Color.parseColor("#FFB6D0"), Color.parseColor("#9CC7FF"), Color.parseColor("#FFE08A"))
-        for (i in 0 until n) {
-            val cx = xs[i]
-            val cover = covers[i % 3]
-            rr(c, cx - w / 2f - 0.5f, 92f, cx + w / 2f + 0.5f, 109f, 4f, cover)
-            rr(c, cx - w / 2f - 0.5f, 92f, cx + w / 2f + 0.5f, 96f, 2f, mix(cover, Color.WHITE, 0.45f))
-            for (k in 0 until 4) {
-                f(Color.WHITE, 150)
-                c.drawCircle(cx - w * 0.36f + k * w * 0.24f, 101f + (k % 2) * 3f, 1.3f, fill)
+        val cover = state.itemFor(FSlot.COVER)
+        for (i in 0 until n) put(c, cover, xs[i] - w / 2f - 0.5f, 92f, w + 1f, 17f)
+
+        // Magic decorations float over everything
+        put(c, state.itemFor(FSlot.MAGIC), 0f, 0f, 100f, 104f)
+
+        // Warm light of the lamp
+        val lamp = state.itemFor(FSlot.LAMP)
+        if (lamp != null) {
+            val pulse = 0.7f + 0.3f * sin(clock * 1.8f)
+            c.save()
+            c.translate(90f, 60f)
+            glow.shader = RadialGradient(
+                0f, 0f, 22f,
+                Color.argb(170, Color.red(lamp.c1), Color.green(lamp.c1), Color.blue(lamp.c1)),
+                Color.argb(0, Color.red(lamp.c1), Color.green(lamp.c1), Color.blue(lamp.c1)),
+                Shader.TileMode.CLAMP
+            )
+            glow.alpha = (255f * pulse).toInt().coerceIn(0, 255)
+            c.drawCircle(0f, 0f, 22f, glow)
+            c.restore()
+        }
+
+        if (level >= 5) {
+            val colors = intArrayOf(Color.parseColor("#FFE27A"), Color.parseColor("#FF8FB8"), Color.parseColor("#8FD0FF"))
+            for (i in 0 until 13) {
+                val t = i / 12f
+                f(colors[i % 3], (160f + 95f * sin(clock * 3f + i)).toInt().coerceIn(0, 255))
+                c.drawCircle(4f + 92f * t, 5f + 5f * sin(Math.PI.toFloat() * t), 1.6f, fill)
             }
         }
 
-        // Warm light of the moon lamp
-        val pulse = 0.7f + 0.3f * sin(clock * 1.8f)
-        c.save()
-        c.translate(90f, 60f)
-        glow.alpha = (255f * pulse).toInt().coerceIn(0, 255)
-        c.drawCircle(0f, 0f, 22f, glow)
-        c.restore()
-
-        if (level >= 5) {
-            // fairy lights over the top of the wall
-            val colors = intArrayOf(Color.parseColor("#FFE27A"), Color.parseColor("#FF8FB8"), Color.parseColor("#8FD0FF"))
-            line.color = Color.parseColor("#B8A6F5")
-            line.strokeWidth = 0.6f
-            for (i in 0 until 13) {
-                val t = i / 12f
-                val x = 4f + 92f * t
-                val y = 5f + 5f * sin(Math.PI.toFloat() * t)
-                f(colors[i % 3], (160f + 95f * sin(clock * 3f + i)).toInt().coerceIn(0, 255))
-                c.drawCircle(x, y, 1.6f, fill)
+        // A burst of sparkles when something new was put in the room
+        val left = state.celebrateUntil - SystemClock.uptimeMillis()
+        if (left > 0L) {
+            val p = 1f - left / 1600f
+            for (i in 0 until 16) {
+                val a = i * 0.3927f
+                val r = 8f + 46f * p
+                f(Color.parseColor("#FFE27A"), ((1f - p) * 255f).toInt().coerceIn(0, 255))
+                c.drawCircle(50f + kotlin.math.cos(a) * r, 80f + sin(a) * r * 0.8f, 2.2f * (1f - p * 0.5f), fill)
             }
         }
     }

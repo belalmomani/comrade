@@ -2,6 +2,7 @@ package com.cuteghost.app
 
 import android.content.Context
 import android.graphics.Color
+import java.util.TimeZone
 
 /** One of the six houses: its name, price in stars and the colours of its room. */
 class HouseDef(
@@ -94,6 +95,19 @@ object HomeStore {
 
     fun setLevel(context: Context, id: Int, level: Int) {
         prefs(context).edit().putInt("level_$id", level.coerceIn(1, 5)).apply()
+    }
+
+    private fun dayNumber(): Int {
+        val now = System.currentTimeMillis()
+        return ((now + TimeZone.getDefault().getOffset(now)) / 86_400_000L).toInt()
+    }
+
+    /** The ghosts' balloon game can be played once a day. */
+    fun canPlayBalloon(context: Context): Boolean =
+        prefs(context).getInt("balloon_day", -1) != dayNumber()
+
+    fun markBalloonPlayed(context: Context) {
+        prefs(context).edit().putInt("balloon_day", dayNumber()).apply()
     }
 
     fun materials(context: Context): Int = prefs(context).getInt(KEY_MATERIALS, 0)
