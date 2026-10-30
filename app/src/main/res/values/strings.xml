@@ -172,4 +172,6 @@
     <string name="notice_no_baby">لا يوجد ابن في الخارج الآن.</string>
     <string name="house_open">منزل الشبح</string>
     <string name="play_open">مدينة ألعاب سحابية</string>
+    <string name="village_open">القرية</string>
+    <string name="grow_now">جرّب: كبّر ابنًا وانقله إلى القرية</string>
 </resources>

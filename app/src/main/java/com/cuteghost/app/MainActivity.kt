@@ -53,6 +53,9 @@ class MainActivity : Activity() {
         )
 
         findViewById<Button>(R.id.showButton).setOnClickListener { proceedShow() }
+        findViewById<Button>(R.id.villageButton).setOnClickListener {
+            startActivity(Intent(this, VillageActivity::class.java))
+        }
         findViewById<Button>(R.id.playButton).setOnClickListener {
             startActivity(Intent(this, PlaygroundActivity::class.java))
         }
@@ -70,6 +73,7 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.neglectButton).setOnClickListener { testNeglect() }
         findViewById<Button>(R.id.seasonButton).setOnClickListener { testSeasonNow() }
         findViewById<Button>(R.id.peekButton).setOnClickListener { testSurprise(true) }
+        findViewById<Button>(R.id.growButton).setOnClickListener { GhostOverlayService.growNow(this) }
         findViewById<Button>(R.id.portalButton).setOnClickListener { testSurprise(false) }
         findViewById<Button>(R.id.checkUpdateButton).setOnClickListener { checkForUpdate(true) }
 

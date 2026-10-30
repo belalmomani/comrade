@@ -96,6 +96,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
 
         private const val ACTION_FEED_NOW = "com.companion.theghost.FEED_NOW"
         private const val ACTION_EGG_NOW = "com.companion.theghost.EGG_NOW"
+        private const val ACTION_GROW_NOW = "com.companion.theghost.GROW_NOW"
         private const val ACTION_NEGLECT_NOW = "com.companion.theghost.NEGLECT_NOW"
         private const val ACTION_SEASON_NOW = "com.companion.theghost.SEASON_NOW"
         private const val ACTION_OUTFIT = "com.companion.theghost.OUTFIT"
@@ -133,6 +134,14 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             startService(
                 context,
                 Intent(context, GhostOverlayService::class.java).setAction(ACTION_EGG_NOW)
+            )
+        }
+
+        /** The first baby grows to the big ghost's size and moves to the village (testing). */
+        fun growNow(context: Context) {
+            startService(
+                context,
+                Intent(context, GhostOverlayService::class.java).setAction(ACTION_GROW_NOW)
             )
         }
 
@@ -332,6 +341,8 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             }
         } else if (action == ACTION_EGG_NOW) {
             layEgg(EGG_TEST_MS, true)
+        } else if (action == ACTION_GROW_NOW) {
+            growNow()
         } else if (action == ACTION_NEGLECT_NOW) {
             testNeglectStep()
         } else if (action == ACTION_SEASON_NOW) {
@@ -634,10 +645,14 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             if (who === mother) {
                 // Only the big ghost's completed meals and drinks count toward laying an egg
                 if (mode == FeedView.Mode.FOOD) fedFlag = true else waterFlag = true
-            } else if (mode == FeedView.Mode.FOOD) {
-                // Every meal makes a baby grow by 1%
+            } else {
+                // Every meal and every bottle of milk makes a baby grow by 1%
                 who.meals++
                 who.applyScale(Family.babyScale(who.meals))
+                if (Family.babyScale(who.meals) >= Family.MAX_BABY_SCALE) {
+                    // As big as the big ghost: it moves to its own house in the village
+                    handler.postDelayed({ if (!destroyed) graduate(who) }, CELEBRATION_LOCK_MS + 800L)
+                }
             }
         }
         if (completed) {
@@ -698,6 +713,57 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             if (w in dying) continue
             w.ghost.setNeglect(minOf(3, w.neglectLevel(now)))
         }
+    }
+
+    /**
+     * A baby reached the size of the big ghost: it moves to its own house in the village and lives
+     * there alone, and the big ghost goes to the village too. The next baby (or a new ghost) takes
+     * her place on the screen.
+     */
+    private fun graduate(b: GhostWindow) {
+        if (destroyed || b !in babies || b in dying) return
+        val m = mother ?: return
+        if (m in dying) return
+        if (activeSession != null || bedtimeActive || b.isMoving || m.userDragging) {
+            handler.postDelayed({ graduate(b) }, 30_000L)
+            return
+        }
+        Village.add(this, b.colorIndex, ghostTitle(b), false)
+        Village.add(this, m.colorIndex, getString(R.string.ghost_big), true)
+        notice?.show(
+            "كبر ${ghostTitle(b)} وصار بحجم أمه! ذهب ليعيش وحده في بيته الخاص في القرية، وذهبت الأم لتعيش هناك أيضًا.",
+            14_000L
+        )
+        dying.add(b)
+        dying.add(m)
+        b.fadeOutAndRemove(1_800L) {
+            if (!destroyed) {
+                dying.remove(b)
+                babies.remove(b)
+                outside.remove(b)
+                entering.remove(b)
+                m.fadeOutAndRemove(2_200L) {
+                    if (!destroyed) {
+                        dying.remove(m)
+                        replaceMother(m)
+                        persist()
+                        updateNeglectVisuals()
+                    }
+                }
+            }
+        }
+    }
+
+    /** Test button: the first baby grows to the big ghost's size now and moves to the village. */
+    private fun growNow() {
+        val b = babies.firstOrNull { it !in dying }
+        if (b == null) {
+            notice?.show("لا يوجد ابن بعد. جرّب البيضة أولًا.", 5_000L)
+            return
+        }
+        b.meals = ((Family.MAX_BABY_SCALE - Family.NEWBORN_SCALE) / Family.GROWTH_PER_MEAL).toInt() + 1
+        b.applyScale(Family.babyScale(b.meals))
+        graduate(b)
     }
 
     private fun checkDeaths() {
