@@ -488,6 +488,8 @@ class FeedView @JvmOverloads constructor(
 
     /** A baby's milk bottle with a teat; [level] 1 = full, 0 = empty. */
     private fun drawBottle(c: Canvas, level: Float) {
+        c.save()
+        c.scale(0.85f, 0.85f)
         fillPaint.style = Paint.Style.FILL
         fillPaint.shader = null
 
@@ -536,5 +538,6 @@ class FeedView @JvmOverloads constructor(
         rect.set(-9f, -4f, -6f, 20f)
         fillPaint.color = Color.parseColor("#99FFFFFF")
         c.drawRoundRect(rect, 2f, 2f, fillPaint)
+        c.restore()
     }
 }

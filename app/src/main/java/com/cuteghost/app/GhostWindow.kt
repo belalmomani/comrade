@@ -57,6 +57,9 @@ class GhostWindow(
         // Needs: food every hour, water every half hour (same for everyone)
         const val HUNGER_INTERVAL_MS = 60L * 60L * 1000L
         const val THIRST_INTERVAL_MS = 30L * 60L * 1000L
+
+        /** Babies drink their milk every two hours. */
+        const val MILK_INTERVAL_MS = 2L * 60L * 60L * 1000L
         const val RETRY_MS = 5L * 60L * 1000L
         const val MIN_GAP_MS = 5L * 60L * 1000L
 
@@ -86,6 +89,8 @@ class GhostWindow(
     val boxWidthPx: Int get() = if (twin) (widthPx * 1.8f).toInt() else widthPx
     private var twinView: GhostView? = null
     val heightPx: Int get() = Family.sizePx(BASE_HEIGHT_DP, scale, density)
+
+    private val drinkIntervalMs: Long get() = if (id == "mother") THIRST_INTERVAL_MS else MILK_INTERVAL_MS
 
     var nextFoodAt = 0L
     var nextWaterAt = 0L
@@ -507,7 +512,7 @@ class GhostWindow(
 
     private fun dueNeedInternal(now: Long, ignoreAskAfter: Boolean): Pair<FeedView.Mode, Long>? {
         if (nextFoodAt == 0L) nextFoodAt = now + HUNGER_INTERVAL_MS
-        if (nextWaterAt == 0L) nextWaterAt = now + THIRST_INTERVAL_MS
+        if (nextWaterAt == 0L) nextWaterAt = now + drinkIntervalMs
         if (!ignoreAskAfter && now < askAfter) return null
         val food = now >= nextFoodAt
         val water = now >= nextWaterAt
@@ -622,7 +627,7 @@ class GhostWindow(
         if (completed) {
             // This need is satisfied. Anything else that is still due stays due (neglect goes on).
             if (mode == FeedView.Mode.WATER) {
-                nextWaterAt = now + THIRST_INTERVAL_MS
+                nextWaterAt = now + drinkIntervalMs
             } else {
                 nextFoodAt = now + HUNGER_INTERVAL_MS
             }
