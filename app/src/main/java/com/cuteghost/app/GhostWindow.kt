@@ -78,6 +78,13 @@ class GhostWindow(
     var meals = 0
 
     val widthPx: Int get() = Family.sizePx(BASE_WIDTH_DP, scale, density)
+
+    /** True for twins: one baby (one set of needs, one colour) shown as two bodies that act as one. */
+    var twin = false
+
+    /** Width of the whole window: wider for twins. */
+    val boxWidthPx: Int get() = if (twin) (widthPx * 1.8f).toInt() else widthPx
+    private var twinView: GhostView? = null
     val heightPx: Int get() = Family.sizePx(BASE_HEIGHT_DP, scale, density)
 
     var nextFoodAt = 0L
@@ -185,7 +192,7 @@ class GhostWindow(
 
     private fun dp(v: Int): Int = (v * density).toInt()
 
-    fun rect(): Rect = Rect(restX, restY, restX + widthPx, restY + heightPx)
+    fun rect(): Rect = Rect(restX, restY, restX + boxWidthPx, restY + heightPx)
 
     fun setSavedPosition(x: Int, y: Int) {
         restX = x
@@ -205,12 +212,12 @@ class GhostWindow(
 
     /** A baby grows a little: resize keeping the bottom centre of the ghost where it is. */
     fun applyScale(newScale: Float) {
-        val oldW = widthPx
+        val oldW = boxWidthPx
         val oldH = heightPx
         scale = newScale
         feed?.mouthZoneScale = maxOf(0.8f, scale)
         val dm = context.resources.displayMetrics
-        val newX = (restX + (oldW - widthPx) / 2).coerceIn(0, maxOf(0, dm.widthPixels - widthPx))
+        val newX = (restX + (oldW - boxWidthPx) / 2).coerceIn(0, maxOf(0, dm.widthPixels - boxWidthPx))
         val newY = (restY + (oldH - heightPx)).coerceIn(0, maxOf(0, dm.heightPixels - heightPx))
         restX = newX
         restY = newY
@@ -218,7 +225,7 @@ class GhostWindow(
         if (p != null && !feeding) {
             p.x = restX
             p.y = restY
-            p.width = widthPx
+            p.width = boxWidthPx
             p.height = heightPx
             updateWindow()
         }
@@ -230,7 +237,7 @@ class GhostWindow(
         if (feeding) return
         moveAnimator?.cancel()
         val dm = context.resources.displayMetrics
-        val tx = x.coerceIn(0, maxOf(0, dm.widthPixels - widthPx))
+        val tx = x.coerceIn(0, maxOf(0, dm.widthPixels - boxWidthPx))
         val ty = y.coerceIn(0, maxOf(0, dm.heightPixels - heightPx))
         val sx = p.x
         val sy = p.y
@@ -281,7 +288,7 @@ class GhostWindow(
     fun show(x: Int, y: Int): Boolean {
         val dm = context.resources.displayMetrics
         val p = WindowManager.LayoutParams(
-            widthPx,
+            boxWidthPx,
             heightPx,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -289,7 +296,7 @@ class GhostWindow(
             PixelFormat.TRANSLUCENT
         )
         p.gravity = Gravity.TOP or Gravity.START
-        restX = x.coerceIn(0, maxOf(0, dm.widthPixels - widthPx))
+        restX = x.coerceIn(0, maxOf(0, dm.widthPixels - boxWidthPx))
         restY = y.coerceIn(0, maxOf(0, dm.heightPixels - heightPx))
         hasPosition = true
         p.x = restX
@@ -311,10 +318,19 @@ class GhostWindow(
         f.visibility = View.GONE
 
         val root = FrameLayout(context)
-        root.addView(
-            g,
-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-        )
+        if (twin) {
+            // The second twin only draws what the first one does, so they move and act as one
+            val t = GhostView(context)
+            t.mirrorOf = g
+            twinView = t
+            root.addView(g, FrameLayout.LayoutParams(widthPx, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP or Gravity.START))
+            root.addView(t, FrameLayout.LayoutParams(widthPx, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP or Gravity.END))
+        } else {
+            root.addView(
+                g,
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            )
+        }
         root.addView(
             f,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -322,6 +338,7 @@ class GhostWindow(
         ghost = g
         feed = f
         attachTouchHandling(g, p)
+        twinView?.setOnTouchListener { _, e -> g.dispatchTouchEvent(e) }
 
         return try {
             wm.addView(root, p)
@@ -353,6 +370,7 @@ class GhostWindow(
         rootView = null
         params = null
         feed = null
+        twinView = null
     }
 
     /** Fades the ghost out and removes the window, then calls [onDone]. */
@@ -531,6 +549,12 @@ class GhostWindow(
         lp.leftMargin = (restX - wx).coerceIn(0, maxOf(0, winW - widthPx))
         lp.topMargin = bubbleH
         ghost.layoutParams = lp
+        twinView?.let { t ->
+            val tl = FrameLayout.LayoutParams(widthPx, heightPx, Gravity.TOP or Gravity.START)
+            tl.leftMargin = (lp.leftMargin + (widthPx * 0.8f).toInt()).coerceAtMost(maxOf(0, winW - widthPx))
+            tl.topMargin = bubbleH
+            t.layoutParams = tl
+        }
 
         // Re-add the window so it is drawn and touched above the other ghosts
         try {
@@ -577,12 +601,17 @@ class GhostWindow(
         if (p != null) {
             p.x = restX
             p.y = restY
-            p.width = widthPx
+            p.width = boxWidthPx
             p.height = heightPx
-            ghost.layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+            if (twin) {
+                ghost.layoutParams = FrameLayout.LayoutParams(widthPx, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP or Gravity.START)
+                twinView?.layoutParams = FrameLayout.LayoutParams(widthPx, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP or Gravity.END)
+            } else {
+                ghost.layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
             updateWindow()
         }
 

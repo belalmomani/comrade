@@ -1195,8 +1195,23 @@ class GhostView @JvmOverloads constructor(
     // Drawing
     // =====================================================================
 
+    /** Set on the second twin: it draws exactly what [mirrorOf] does, turned around. */
+    var mirrorOf: GhostView? = null
+
     override fun onDraw(canvas: Canvas) {
-        val s = min(width / LOGICAL_W, height / LOGICAL_H)
+        val src = mirrorOf
+        if (src != null) {
+            canvas.save()
+            canvas.scale(-1f, 1f, width / 2f, height / 2f)
+            src.drawFrame(canvas, width, height)
+            canvas.restore()
+        } else {
+            drawFrame(canvas, width, height)
+        }
+    }
+
+    private fun drawFrame(canvas: Canvas, w: Int, h: Int) {
+        val s = min(w / LOGICAL_W, h / LOGICAL_H)
         val chewing = mood == Mood.EATING || mood == Mood.DRINKING
         val sobbing = mood == Mood.CRYING
         val moodY = sagAmt * 2.8f + swayAmt * 1.2f + cryAmt * abs(sin(cryPhase * 0.5f)) * 1.6f -
@@ -1206,7 +1221,7 @@ class GhostView @JvmOverloads constructor(
         val squash = jumpSq + sagAmt * 0.03f + (if (chewing) talkOpen * 0.02f else 0f)
 
         canvas.save()
-        canvas.translate((width - LOGICAL_W * s) / 2f, (height - LOGICAL_H * s) / 2f)
+        canvas.translate((w - LOGICAL_W * s) / 2f, (h - LOGICAL_H * s) / 2f)
         canvas.scale(s, s)
         canvas.translate(tapX, GHOST_OFFSET_Y + floatY + jumpY + moodY)
         canvas.rotate(idleTilt + dragTilt + tapRot + moodTilt, 50f, 90f)

@@ -62,6 +62,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         private const val KEY_EGG_X = "egg_x"
         private const val KEY_EGG_Y = "egg_y"
         private const val KEY_LAST_EGG_DAY = "last_egg_day"
+        private const val KEY_EGG_MYSTERY = "egg_mystery"
         private const val KEY_SEASON_DAY = "season_day"
         private const val KEY_ALIVE = "last_alive_at"
 
@@ -463,6 +464,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
                 this, wm, "baby_$n", Family.babyScale(meals), p.getInt("b${n}_c", n - 1), this
             )
             b.meals = meals
+            b.twin = p.getBoolean("b${n}_twin", false)
             b.nextFoodAt = p.getLong("b${n}_food", 0L)
             b.nextWaterAt = p.getLong("b${n}_water", 0L)
             babies.add(b)
@@ -501,6 +503,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
                 p.getInt(KEY_EGG_X, 0), p.getInt(KEY_EGG_Y, 0),
                 false, this
             )
+            e.mystery = p.getBoolean(KEY_EGG_MYSTERY, false)
             if (e.show()) egg = e
         }
 
@@ -575,6 +578,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             e.putInt("b${n}_meals", b.meals)
             e.putLong("b${n}_food", b.nextFoodAt)
             e.putLong("b${n}_water", b.nextWaterAt)
+            e.putBoolean("b${n}_twin", b.twin)
         }
         e.putBoolean(KEY_FED_FLAG, fedFlag)
         e.putBoolean(KEY_WATER_FLAG, waterFlag)
@@ -585,6 +589,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             e.putLong(KEY_EGG_DUR, eg.durationMs)
             e.putInt(KEY_EGG_X, eg.x)
             e.putInt(KEY_EGG_Y, eg.y)
+            e.putBoolean(KEY_EGG_MYSTERY, eg.mystery)
         }
         e.putLong(KEY_ALIVE, System.currentTimeMillis())
         e.apply()
@@ -1003,6 +1008,8 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             this, wm, babyTotal, System.currentTimeMillis(), durationMs,
             spot.x, spot.y, true, this
         )
+        // One egg in four is a mystery egg with twins inside (the test egg always is)
+        e.mystery = test || kotlin.random.Random.nextInt(4) == 0
         if (!e.show()) return
         egg = e
         if (!test) {
@@ -1024,12 +1031,13 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             val b = GhostWindow(
                 this, wm, "baby_${babies.size + 1}", Family.babyScale(0), babyTotal, this
             )
+            b.twin = egg.mystery
             babyTotal++
             val now = System.currentTimeMillis()
             b.nextWaterAt = now + BABY_FIRST_WATER_MS
             b.nextFoodAt = now + BABY_FIRST_FOOD_MS
             val density = resources.displayMetrics.density
-            val bx = egg.x + (egg.widthPx - b.widthPx) / 2
+            val bx = egg.x + (egg.widthPx - b.boxWidthPx) / 2
             val by = egg.y + egg.heightPx - b.heightPx - (EggWindow.BABY_BOTTOM_MARGIN_DP * density).toInt()
             babies.add(b)
             showHouse()
@@ -1049,6 +1057,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
                 val traits = resources.getStringArray(R.array.personality_names)
                 val trait = traits[Family.personalityFor(b.colorIndex).ordinal]
                 var text = getString(R.string.notice_hatched, ghostTitle(b), trait)
+                if (b.twin) text = "فقس توأمان! يتصرفان معًا كأنهما واحد.\n" + text
                 val gifts = Wardrobe.recordHatched(this)
                 HomeStore.addMaterials(this, 3)
                 if (gifts.isNotEmpty()) text += "\n" + giftText(gifts)

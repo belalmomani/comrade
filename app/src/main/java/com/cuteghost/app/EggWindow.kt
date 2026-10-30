@@ -45,6 +45,9 @@ class EggWindow(
     val widthPx = eggWidth(density)
     val heightPx = eggHeight(density)
 
+    /** A mystery egg hatches twins. */
+    var mystery = false
+
     private var root: FrameLayout? = null
     private var eggView: EggView? = null
 
@@ -70,6 +73,7 @@ class EggWindow(
 
         val egg = EggView(context)
         egg.tint = Family.color(colorIndex)
+        egg.mystery = mystery
         egg.baby = babyView
         egg.listener = this
 

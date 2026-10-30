@@ -36,8 +36,8 @@ android {
         minSdk = 24
         targetSdk = 34
         // Increase both numbers with every update so Android installs it as an update.
-        versionCode = 18
-        versionName = "3.3"
+        versionCode = 19
+        versionName = "3.4"
         buildConfigField("String", "AI_KEYS", "\"$aiKeys\"")
         buildConfigField("String", "UPDATE_REPO", "\"$updateRepo\"")
     }
