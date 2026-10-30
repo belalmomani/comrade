@@ -1,9 +1,17 @@
+# Gradle / Android
 .gradle/
 build/
 local.properties
 *.iml
 .idea/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# أسرار — لا تُرفع أبدًا
 *.jks
 *.keystore
-captures/
-.DS_Store
+keystore.properties
+google-services.json
+*.p12
+.env

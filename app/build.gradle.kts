@@ -1,64 +1,22 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
-// Stable signing key supplied by GitHub Actions secrets (never stored in the repo).
-// Without it the build falls back to a random debug key and cannot update an installed app.
-val keystorePath: String? = System.getenv("GHOST_KEYSTORE_PATH")
-val keystorePassword: String? = System.getenv("GHOST_KEYSTORE_PASSWORD")
-// AI keys come from the GitHub secret GHOST_AI_KEYS (comma separated); empty when not set.
-val aiKeys: String = (System.getenv("GHOST_AI_KEYS") ?: "")
-    .replace("\"", "")
-    .replace("\\", "")
-    .trim()
-
-// Repository that publishes the releases used by the in-app updater (set automatically by GitHub Actions).
-val updateRepo: String = (System.getenv("GITHUB_REPOSITORY") ?: "")
-    .replace("\"", "")
-    .replace("\\", "")
-    .trim()
-
-val hasStableKey = !keystorePath.isNullOrEmpty() &&
-    !keystorePassword.isNullOrEmpty() &&
-    file(keystorePath!!).exists()
-
 android {
-    namespace = "com.cuteghost.app"
-    compileSdk = 34
-
-    buildFeatures {
-        buildConfig = true
-    }
+    namespace = "com.diskati.pcmanager"
+    compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.companion.theghost"
+        applicationId = "com.diskati.pcmanager"
         minSdk = 24
-        targetSdk = 34
-        // Increase both numbers with every update so Android installs it as an update.
-        versionCode = 24
-        versionName = "3.9"
-        buildConfigField("String", "AI_KEYS", "\"$aiKeys\"")
-        buildConfigField("String", "UPDATE_REPO", "\"$updateRepo\"")
-    }
-
-    signingConfigs {
-        if (hasStableKey) {
-            create("stable") {
-                storeFile = file(keystorePath!!)
-                storePassword = keystorePassword
-                keyAlias = "cuteghost"
-                keyPassword = keystorePassword
-            }
-        }
+        targetSdk = 35
+        versionCode = 3
+        versionName = "0.4.0"
     }
 
     buildTypes {
-        getByName("debug") {
-            if (hasStableKey) {
-                signingConfig = signingConfigs.getByName("stable")
-            }
-        }
         release {
             isMinifyEnabled = false
         }
@@ -68,8 +26,20 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
     kotlinOptions {
         jvmTarget = "17"
     }
+    buildFeatures {
+        compose = true
+    }
+}
+
+dependencies {
+    // المرحلة 4: الاتصال بالكمبيوتر يستخدم مكتبات Android القياسية فقط (javax.net.ssl وorg.json وKeystore). لا إعلانات ولا Firebase بعد.
+    implementation(platform("androidx.compose:compose-bom:2024.10.01"))
+    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.material3:material3")
+    // للأيقونات مثل Folder وVideocam وHistory. تُستبدل بأيقونات محددة قبل النسخة النهائية لتقليل الحجم.
+    implementation("androidx.compose.material:material-icons-extended")
 }
