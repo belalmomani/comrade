@@ -174,4 +174,6 @@
     <string name="play_open">مدينة ألعاب سحابية</string>
     <string name="village_open">القرية</string>
     <string name="grow_now">جرّب: كبّر ابنًا وانقله إلى القرية</string>
+    <string name="mischief_allow">السماح للأشباح بمشاغبات مزحة (شاشة متشققة وهمية، ألوان، فقاعات، رقص مضحك)</string>
+    <string name="mischief_now">جرّب مشاغبة الآن</string>
 </resources>

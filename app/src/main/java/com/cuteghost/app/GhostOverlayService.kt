@@ -96,6 +96,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
 
         private const val ACTION_FEED_NOW = "com.companion.theghost.FEED_NOW"
         private const val ACTION_EGG_NOW = "com.companion.theghost.EGG_NOW"
+        private const val ACTION_MISCHIEF_NOW = "com.companion.theghost.MISCHIEF_NOW"
         private const val ACTION_GROW_NOW = "com.companion.theghost.GROW_NOW"
         private const val ACTION_NEGLECT_NOW = "com.companion.theghost.NEGLECT_NOW"
         private const val ACTION_SEASON_NOW = "com.companion.theghost.SEASON_NOW"
@@ -142,6 +143,14 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             startService(
                 context,
                 Intent(context, GhostOverlayService::class.java).setAction(ACTION_GROW_NOW)
+            )
+        }
+
+        /** A ghost plays a pretend prank right now (testing). */
+        fun mischiefNow(context: Context) {
+            startService(
+                context,
+                Intent(context, GhostOverlayService::class.java).setAction(ACTION_MISCHIEF_NOW)
             )
         }
 
@@ -251,6 +260,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             manageHouse()
             maybeDriftHouse()
             maybePeek()
+            maybeMischief()
             maybeOpenPortal()
             checkVisitor()
             maybeSpeakPhrase()
@@ -343,6 +353,8 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             layEgg(EGG_TEST_MS, true)
         } else if (action == ACTION_GROW_NOW) {
             growNow()
+        } else if (action == ACTION_MISCHIEF_NOW) {
+            startMischief(true)
         } else if (action == ACTION_NEGLECT_NOW) {
             testNeglectStep()
         } else if (action == ACTION_SEASON_NOW) {
@@ -373,6 +385,8 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         seasonWindow = null
         egg?.remove()
         egg = null
+        mischiefWindow?.remove()
+        mischiefWindow = null
         house?.remove()
         house = null
         for (b in babies) b.remove()
@@ -764,6 +778,91 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         b.meals = ((Family.MAX_BABY_SCALE - Family.NEWBORN_SCALE) / Family.GROWTH_PER_MEAL).toInt() + 1
         b.applyScale(Family.babyScale(b.meals))
         graduate(b)
+    }
+
+    // ---------- Naughty ghosts: pretend pranks (never real damage) ----------
+
+    private var mischiefWindow: MischiefWindow? = null
+    private var lastMischiefAt = 0L
+
+    private fun mischiefEnabled(): Boolean =
+        getSharedPreferences("ghost_prefs", MODE_PRIVATE).getBoolean("mischief_enabled", true)
+
+    /** Once in a while (at most twice a day, hours apart) a ghost plays a harmless pretend prank. */
+    private fun maybeMischief() {
+        if (mischiefWindow != null || bedtimeActive || activeSession != null) return
+        if (peek != null || portal != null || peeker != null) return
+        if (!mischiefEnabled()) return
+        val now = System.currentTimeMillis()
+        if (now - serviceStartedAt < 180_000L || now - lastMischiefAt < 150L * 60L * 1000L) return
+        val p = getSharedPreferences("ghost_prefs", MODE_PRIVATE)
+        val today = dayNumber()
+        val count = if (p.getInt("mischief_day", -1) == today) p.getInt("mischief_count", 0) else 0
+        if (count >= 2) return
+        if (Random.nextFloat() > 0.02f) return
+        startMischief(false)
+    }
+
+    private fun startMischief(test: Boolean) {
+        if (mischiefWindow != null || activeSession != null || bedtimeActive) return
+        val wm = windowManager ?: return
+        val now = System.currentTimeMillis()
+        // A baby that plays outside is the naughty one; without one, the big ghost
+        val g = pickPeeker(now) ?: mother?.takeIf {
+            it.isShown && !it.userDragging && it !in dying && it.neglectLevel(now) == 0 && it.pendingNeed(now) == null
+        }
+        if (g == null) {
+            if (test) notice?.show(getString(R.string.notice_no_baby), 5_000L)
+            return
+        }
+        val r = g.rect()
+        val cx = r.centerX().toFloat()
+        val cy = r.centerY().toFloat()
+        val title = ghostTitle(g)
+        val gv = g.ghost
+        lastMischiefAt = now
+        val p = getSharedPreferences("ghost_prefs", MODE_PRIVATE)
+        val today = dayNumber()
+        val count = if (p.getInt("mischief_day", -1) == today) p.getInt("mischief_count", 0) else 0
+        if (!test) p.edit().putInt("mischief_day", today).putInt("mischief_count", count + 1).apply()
+
+        fun at(ms: Long, block: () -> Unit) {
+            handler.postDelayed({ if (!destroyed) block() }, ms)
+        }
+        fun effect(kind: MischiefView.Effect, ms: Long, duration: Long) {
+            at(ms) {
+                val mw = MischiefWindow(this, wm)
+                if (mw.show(kind, cx, cy, duration) { mischiefWindow = null }) mischiefWindow = mw
+            }
+        }
+        when (Random.nextInt(4)) {
+            0 -> { // the "broken screen" joke
+                gv.funnyMove(0)
+                notice?.show("$title يشاغب... أوبس!", 3_000L)
+                effect(MischiefView.Effect.CRACK, 1_400L, 7_000L)
+                at(2_000L) { gv.funnyMove(4) }
+                at(3_800L) { gv.funnyMove(1) }
+                at(6_300L) { notice?.show("مزحة! الهاتف سليم تمامًا", 3_500L) }
+            }
+            1 -> { // throwing colours
+                gv.funnyMove(2)
+                notice?.show("$title يرمي الألوان!", 3_000L)
+                effect(MischiefView.Effect.SPLAT, 1_000L, 7_000L)
+                at(2_500L) { gv.funnyMove(1) }
+                at(4_500L) { gv.funnyMove(4) }
+            }
+            2 -> { // soap bubbles
+                gv.funnyMove(3)
+                notice?.show("$title ينفخ فقاعات الصابون!", 3_000L)
+                effect(MischiefView.Effect.BUBBLES, 800L, 8_000L)
+                at(3_000L) { gv.funnyMove(1) }
+                at(5_500L) { gv.funnyMove(4) }
+            }
+            else -> { // a silly dance
+                notice?.show("$title يرقص رقصة مضحكة!", 3_500L)
+                for (i in 0 until 6) at(i * 1_400L) { gv.funnyMove(i) }
+            }
+        }
     }
 
     private fun checkDeaths() {

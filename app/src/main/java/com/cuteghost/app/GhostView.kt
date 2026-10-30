@@ -664,6 +664,23 @@ class GhostView @JvmOverloads constructor(
     }
 
     /** Shy: it blushes and looks down (used when it is discovered). */
+    /** A funny, naughty move (shake, wiggle-hop, double hop, rebound or a big laugh) with a cheeky face. */
+    fun funnyMove(kind: Int) {
+        if (forcedSleep || feedState != FeedState.NONE) return
+        val anim: TapAnim
+        val face: Mood
+        when (((kind % 5) + 5) % 5) {
+            0 -> { anim = TapAnim.SHAKE; face = Mood.MISCHIEVOUS }
+            1 -> { anim = TapAnim.WIGGLE_HOP; face = Mood.LAUGHING }
+            2 -> { anim = TapAnim.DOUBLE_HOP; face = Mood.MISCHIEVOUS }
+            3 -> { anim = TapAnim.REBOUND; face = Mood.LAUGHING }
+            else -> { anim = TapAnim.LAUGH; face = Mood.LAUGHING }
+        }
+        idle = 0f
+        startTapAnim(anim)
+        setOverride(face, 2.2f)
+    }
+
     fun showShy() {
         if (feedState != FeedState.NONE || forcedSleep) return
         setOverride(Mood.SHY, 2.0f)

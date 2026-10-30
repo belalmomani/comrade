@@ -73,6 +73,14 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.neglectButton).setOnClickListener { testNeglect() }
         findViewById<Button>(R.id.seasonButton).setOnClickListener { testSeasonNow() }
         findViewById<Button>(R.id.peekButton).setOnClickListener { testSurprise(true) }
+        val mischiefPrefs = getSharedPreferences("ghost_prefs", MODE_PRIVATE)
+        findViewById<android.widget.CheckBox>(R.id.mischiefCheck).apply {
+            isChecked = mischiefPrefs.getBoolean("mischief_enabled", true)
+            setOnCheckedChangeListener { _, on ->
+                mischiefPrefs.edit().putBoolean("mischief_enabled", on).apply()
+            }
+        }
+        findViewById<Button>(R.id.mischiefButton).setOnClickListener { GhostOverlayService.mischiefNow(this) }
         findViewById<Button>(R.id.growButton).setOnClickListener { GhostOverlayService.growNow(this) }
         findViewById<Button>(R.id.portalButton).setOnClickListener { testSurprise(false) }
         findViewById<Button>(R.id.checkUpdateButton).setOnClickListener { checkForUpdate(true) }

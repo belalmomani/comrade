@@ -244,6 +244,20 @@
             android:layout_marginTop="12dp"
             android:text="@string/grow_now" />
 
+        <CheckBox
+            android:id="@+id/mischiefCheck"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/mischief_allow" />
+
+        <Button
+            android:id="@+id/mischiefButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/mischief_now" />
+
         <Button
             android:id="@+id/peekButton"
             android:layout_width="match_parent"
