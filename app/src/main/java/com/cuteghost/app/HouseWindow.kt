@@ -10,6 +10,8 @@ import android.os.Looper
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.ViewConfiguration
+import kotlin.math.hypot
 import android.view.WindowManager
 import android.view.animation.AccelerateDecelerateInterpolator
 
@@ -17,7 +19,9 @@ import android.view.animation.AccelerateDecelerateInterpolator
 class HouseWindow(
     private val context: Context,
     private val wm: WindowManager,
-    private val onTap: () -> Unit = {}
+    private val onTap: () -> Unit = {},
+    /** Called with the new place after the house was dragged. */
+    private val onMoved: (Int, Int) -> Unit = { _, _ -> }
 ) {
     companion object {
         const val WIDTH_DP = 96
@@ -35,6 +39,10 @@ class HouseWindow(
     var y = 0
         private set
     var isGliding = false
+        private set
+
+    /** True while a finger is moving the house. */
+    var isDragging = false
         private set
     private var view: HouseView? = null
     private var params: WindowManager.LayoutParams? = null
@@ -68,10 +76,51 @@ class HouseWindow(
         val v = HouseView(context)
         v.setLook(HomeStore.selected(context), HomeStore.level(context, HomeStore.selected(context)))
         // Touching the house opens it: the inside with the sleeping ghosts
+        // A short touch opens it; dragging with a finger moves it to another place
+        val dm = context.resources.displayMetrics
+        val slop = ViewConfiguration.get(context).scaledTouchSlop
+        var downRawX = 0f
+        var downRawY = 0f
+        var startX = 0
+        var startY = 0
         v.setOnTouchListener { _, e ->
-            if (e.actionMasked == MotionEvent.ACTION_UP && e.eventTime - e.downTime <= 450L) {
-                openDoor(1_200L)
-                onTap()
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downRawX = e.rawX
+                    downRawY = e.rawY
+                    startX = x
+                    startY = y
+                    isDragging = false
+                    glideAnimator?.cancel()
+                    isGliding = false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = e.rawX - downRawX
+                    val dy = e.rawY - downRawY
+                    if (!isDragging && hypot(dx, dy) > slop) isDragging = true
+                    if (isDragging) {
+                        x = (startX + dx).toInt().coerceIn(0, maxOf(0, dm.widthPixels - widthPx))
+                        y = (startY + dy).toInt().coerceIn(0, maxOf(0, dm.heightPixels - heightPx))
+                        p.x = x
+                        p.y = y
+                        updateWindow()
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (isDragging) {
+                        isDragging = false
+                        onMoved(x, y)
+                    } else if (e.eventTime - e.downTime <= 450L) {
+                        openDoor(1_200L)
+                        onTap()
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    if (isDragging) {
+                        isDragging = false
+                        onMoved(x, y)
+                    }
+                }
             }
             true
         }

@@ -907,7 +907,7 @@ class GhostView @JvmOverloads constructor(
             feedState == FeedState.EATING -> Mood.EATING
             feedState == FeedState.DRINKING -> Mood.DRINKING
             feedState == FeedState.HUNGRY -> Mood.HUNGRY
-            feedState == FeedState.THIRSTY -> Mood.THIRSTY
+            feedState == FeedState.THIRSTY -> if (cryWhenThirsty) Mood.CRYING else Mood.THIRSTY
             neglect >= 3 -> Mood.SICK
             neglect == 2 -> Mood.CRYING
             neglect == 1 -> Mood.SAD
@@ -1194,6 +1194,9 @@ class GhostView @JvmOverloads constructor(
     // =====================================================================
     // Drawing
     // =====================================================================
+
+    /** Babies cry while they ask for their milk. */
+    var cryWhenThirsty = false
 
     /** Set on the second twin: it draws exactly what [mirrorOf] does, turned around. */
     var mirrorOf: GhostView? = null

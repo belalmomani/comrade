@@ -45,6 +45,9 @@ class FeedView @JvmOverloads constructor(
     /** Colour of the water cup (a baby's cup has the baby's colour). */
     var cupColor: Int = Color.parseColor("#4FC3F7")
 
+    /** True for babies: they ask for milk in a bottle instead of water in a cup. */
+    var milk = false
+
     private enum class Kind { APPLE, BANANA, COOKIE, CUP }
 
     private class Food(val kind: Kind) {
@@ -146,7 +149,8 @@ class FeedView @JvmOverloads constructor(
         dragFood = null
         eatingNow = false
         finishTimer = -1f
-        bubbleText = context.getString(if (mode == Mode.FOOD) R.string.feed_ask else R.string.drink_ask)
+        bubbleText = if (mode == Mode.WATER && milk) "أرجوك أعطني حليبي في الرضاعة" else
+            context.getString(if (mode == Mode.FOOD) R.string.feed_ask else R.string.drink_ask)
         lastTime = SystemClock.uptimeMillis()
         invalidate()
     }
@@ -257,7 +261,7 @@ class FeedView @JvmOverloads constructor(
         // The cup tilts toward the mouth only while it is at the mouth, then returns upright
         for (f in foods) {
             if (f.kind == Kind.CUP) {
-                val target = if (f === dragFood && eatingNow) cupDir * 38f else 0f
+                val target = if (f === dragFood && eatingNow) cupDir * (if (milk) 64f else 38f) else 0f
                 f.tilt += (target - f.tilt) * (1f - exp(-10f * dt))
             }
         }
@@ -353,7 +357,7 @@ class FeedView @JvmOverloads constructor(
             Kind.APPLE -> drawApple(c)
             Kind.BANANA -> drawBanana(c)
             Kind.COOKIE -> drawCookie(c)
-            Kind.CUP -> drawCup(c, 1f - f.eaten)
+            Kind.CUP -> if (milk) drawBottle(c, 1f - f.eaten) else drawCup(c, 1f - f.eaten)
         }
         c.restoreToCount(saved)
     }
@@ -478,6 +482,58 @@ class FeedView @JvmOverloads constructor(
 
         // Shine
         rect.set(-13f, -16f, -9.5f, 10f)
+        fillPaint.color = Color.parseColor("#99FFFFFF")
+        c.drawRoundRect(rect, 2f, 2f, fillPaint)
+    }
+
+    /** A baby's milk bottle with a teat; [level] 1 = full, 0 = empty. */
+    private fun drawBottle(c: Canvas, level: Float) {
+        fillPaint.style = Paint.Style.FILL
+        fillPaint.shader = null
+
+        // Teat
+        path.reset()
+        path.moveTo(-6f, -14f)
+        path.quadTo(-7f, -28f, 0f, -32f)
+        path.quadTo(7f, -28f, 6f, -14f)
+        path.close()
+        fillPaint.color = Color.parseColor("#FFD7A8")
+        c.drawPath(path, fillPaint)
+
+        // Collar in the baby's colour
+        rect.set(-14f, -16f, 14f, -9f)
+        fillPaint.color = mixC(cupColor, Color.WHITE, 0.15f)
+        c.drawRoundRect(rect, 3f, 3f, fillPaint)
+
+        // Glass body and the milk inside
+        rect.set(-12f, -10f, 12f, 28f)
+        fillPaint.color = withAlpha(Color.WHITE, 0x99)
+        c.drawRoundRect(rect, 6f, 6f, fillPaint)
+        if (level > 0.02f) {
+            c.save()
+            path.reset()
+            path.addRoundRect(rect, 6f, 6f, Path.Direction.CW)
+            c.clipPath(path)
+            val top = 28f - 36f * level
+            val milkRect = RectF(-12f, top, 12f, 28f)
+            fillPaint.color = Color.parseColor("#FFFDF6")
+            c.drawRect(milkRect, fillPaint)
+            c.restore()
+        }
+
+        // Outline and measuring marks
+        linePaint.style = Paint.Style.STROKE
+        linePaint.color = mixC(cupColor, Color.BLACK, 0.2f)
+        linePaint.strokeWidth = 2.2f
+        rect.set(-12f, -10f, 12f, 28f)
+        c.drawRoundRect(rect, 6f, 6f, linePaint)
+        rect.set(-14f, -16f, 14f, -9f)
+        c.drawRoundRect(rect, 3f, 3f, linePaint)
+        linePaint.strokeWidth = 1.4f
+        for (k in 0 until 3) c.drawLine(4f, 2f + k * 9f, 12f, 2f + k * 9f, linePaint)
+
+        // Shine
+        rect.set(-9f, -4f, -6f, 20f)
         fillPaint.color = Color.parseColor("#99FFFFFF")
         c.drawRoundRect(rect, 2f, 2f, fillPaint)
     }

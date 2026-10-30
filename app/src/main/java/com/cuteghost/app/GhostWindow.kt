@@ -304,6 +304,7 @@ class GhostWindow(
 
         val g = GhostView(context)
         g.setBodyColor(if (colorIndex >= 0) Family.color(colorIndex) else null)
+        g.cryWhenThirsty = id != "mother" // babies cry while they ask for milk
         // Babies play differently from the big ghost
         g.playful = scale < 1f
         // Every baby has its own character; the big ghost has none
@@ -315,6 +316,7 @@ class GhostWindow(
         f.mouthZoneScale = maxOf(0.8f, scale)
         // The water cup has the baby's colour (the big ghost keeps the blue one)
         if (colorIndex >= 0) f.cupColor = Family.color(colorIndex)
+        f.milk = id != "mother" // babies drink milk from a bottle
         f.visibility = View.GONE
 
         val root = FrameLayout(context)

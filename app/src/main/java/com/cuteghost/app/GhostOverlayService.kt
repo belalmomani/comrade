@@ -804,7 +804,15 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
     private fun showHouse() {
         if (house != null) return
         val wm = windowManager ?: return
-        val h = HouseWindow(this, wm) { openHouseScreen() }
+        val h = HouseWindow(this, wm, { openHouseScreen() }, { x, y -> onHouseMoved(x, y) })
+        // Where the child put the house last time, or next to the big ghost
+        val sx = prefs().getInt("house_x", -1)
+        val sy = prefs().getInt("house_y", -1)
+        val dm = resources.displayMetrics
+        if (sx >= 0 && sy >= 0 && sx + h.widthPx <= dm.widthPixels && sy + h.heightPx <= dm.heightPixels) {
+            if (h.show(sx, sy)) house = h
+            return
+        }
         val spot = houseSpot(h.widthPx, h.heightPx) ?: return
         if (h.show(spot.x, spot.y)) house = h
     }
@@ -1285,11 +1293,17 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         }
     }
 
+    /** The child moved the house: it stays there (also after a restart) and does not float away for a while. */
+    private fun onHouseMoved(x: Int, y: Int) {
+        prefs().edit().putInt("house_x", x).putInt("house_y", y).apply()
+        nextHouseDriftAt = System.currentTimeMillis() + 30L * 60L * 1000L
+    }
+
     // ---------- The floating house moves on its own ----------
 
     private fun maybeDriftHouse() {
         val h = house ?: return
-        if (bedtimeActive || activeSession != null || h.isGliding) return
+        if (bedtimeActive || activeSession != null || h.isGliding || h.isDragging) return
         val now = System.currentTimeMillis()
         if (now < nextHouseDriftAt) return
         nextHouseDriftAt = now + HOUSE_DRIFT_MIN_MS +
