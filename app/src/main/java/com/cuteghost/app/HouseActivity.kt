@@ -197,7 +197,7 @@ class HouseActivity : Activity() {
     // Inside the house: the sleeping ghosts
     // =====================================================================
 
-    private fun showInterior(id: Int) {
+    private fun showInterior(id: Int, celebrate: Boolean = false) {
         inInterior = true
         panel = null
         selected = null
@@ -233,10 +233,15 @@ class HouseActivity : Activity() {
         bottom.gravity = Gravity.CENTER
         bottom.setPadding(dp(16), dp(8), dp(16), dp(22))
         val shopBtn = button("زيّن منزلك", Color.parseColor("#E5469A")) { openShop() }
-        bottom.addView(shopBtn, LinearLayout.LayoutParams(dp(220), dp(54)))
+        bottom.addView(shopBtn, LinearLayout.LayoutParams(dp(165), dp(54)))
+        val upBtn = button("ترقية المنزل", Color.parseColor("#7C5CFF")) { showUpgradeDialog() }
+        val ulp = LinearLayout.LayoutParams(dp(165), dp(54))
+        ulp.leftMargin = dp(10)
+        bottom.addView(upBtn, ulp)
         root.addView(bottom, FrameLayout.LayoutParams(match, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
         bottomBar = bottom
 
+        if (celebrate) state.celebrateUntil = SystemClock.uptimeMillis() + 1_600L
         root.post { placeGhosts(ghostLayer, level, 0) }
     }
 
@@ -289,6 +294,66 @@ class HouseActivity : Activity() {
     // =====================================================================
     // "Decorate your house": categories, items, preview, buy, place
     // =====================================================================
+
+    // =====================================================================
+    // Upgrading the house: levels 1 to 5, each one changes how it looks
+    // =====================================================================
+
+    private fun artColumn(title: String, level: Int): LinearLayout {
+        val col = LinearLayout(this)
+        col.orientation = LinearLayout.VERTICAL
+        col.gravity = Gravity.CENTER
+        col.addView(HouseArtView(this, houseId, level), LinearLayout.LayoutParams(dp(120), dp(130)))
+        col.addView(label(title, 14f, Color.parseColor("#2B2540"), true))
+        return col
+    }
+
+    private fun showUpgradeDialog() {
+        val id = houseId
+        val level = HomeStore.level(this, id)
+        val content = LinearLayout(this)
+        content.orientation = LinearLayout.VERTICAL
+        content.setPadding(dp(16), dp(10), dp(16), 0)
+        val previews = LinearLayout(this)
+        previews.orientation = LinearLayout.HORIZONTAL
+        previews.gravity = Gravity.CENTER
+        previews.addView(artColumn("الحالي: المستوى $level", level))
+        if (level < HouseUpgrades.MAX_LEVEL) {
+            previews.addView(label("  ←  ", 22f, Color.parseColor("#7C5CFF"), true))
+            previews.addView(artColumn("القادم: المستوى ${level + 1}", level + 1))
+        }
+        content.addView(previews)
+
+        val builder = AlertDialog.Builder(this).setTitle(HouseDefs.get(id).name).setView(content)
+            .setNegativeButton("إغلاق", null)
+        if (level >= HouseUpgrades.MAX_LEVEL) {
+            content.addView(label("منزلك في أعلى مستوى، وفيه كل التفاصيل!", 15f, Color.parseColor("#2B2540"), false))
+            builder.show()
+            return
+        }
+        val cost = HouseUpgrades.cost(level)
+        content.addView(label("المستوى ${level + 1} يضيف: ${HouseUpgrades.adds(level + 1)}", 15f, Color.parseColor("#2B2540"), false))
+        content.addView(
+            label(
+                "التكلفة: ${cost.first} نجمة (عندك ${Wardrobe.stars(this)}) و${cost.second} مادة (عندك ${HomeStore.materials(this)}).\nأثاثك كله يبقى كما هو.",
+                14f, Color.parseColor("#5C5675"), false
+            )
+        )
+        val dialog = builder.setPositiveButton("رقِّ المنزل", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                if (Wardrobe.stars(this) < cost.first || HomeStore.materials(this) < cost.second) {
+                    Toast.makeText(this, "تحتاج ${cost.first} نجمة و${cost.second} مادة", Toast.LENGTH_LONG).show()
+                } else if (Wardrobe.spendStars(this, cost.first) && HomeStore.spendMaterials(this, cost.second)) {
+                    HomeStore.setLevel(this, id, level + 1)
+                    dialog.dismiss()
+                    Toast.makeText(this, "ارتقى المنزل إلى المستوى ${level + 1}!", Toast.LENGTH_LONG).show()
+                    showInterior(id, true)
+                }
+            }
+        }
+        dialog.show()
+    }
 
     private fun openShop() {
         if (panel != null) return

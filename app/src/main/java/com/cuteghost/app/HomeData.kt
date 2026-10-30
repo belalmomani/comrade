@@ -112,6 +112,14 @@ object HomeStore {
 
     fun materials(context: Context): Int = prefs(context).getInt(KEY_MATERIALS, 0)
 
+    /** Spends building materials (for an upgrade). Returns false when there are not enough. */
+    fun spendMaterials(context: Context, count: Int): Boolean {
+        val have = materials(context)
+        if (have < count) return false
+        prefs(context).edit().putInt(KEY_MATERIALS, have - count).apply()
+        return true
+    }
+
     fun addMaterials(context: Context, count: Int) {
         prefs(context).edit().putInt(KEY_MATERIALS, materials(context) + count).apply()
     }
@@ -123,5 +131,24 @@ object HomeStore {
         val list = ArrayList<Int>()
         for (i in 1..n) list.add(p.getInt("b${i}_c", i - 1))
         return list
+    }
+}
+
+/** What upgrading a house costs (stars, materials) and what every new level adds. */
+object HouseUpgrades {
+    const val MAX_LEVEL = 5
+
+    fun cost(level: Int): Pair<Int, Int> = when (level) {
+        1 -> Pair(10, 5)
+        2 -> Pair(20, 10)
+        3 -> Pair(35, 20)
+        else -> Pair(55, 30)
+    }
+
+    fun adds(nextLevel: Int): String = when (nextLevel) {
+        2 -> "راية على السطح وزهور حول البيت"
+        3 -> "جناح إضافي، وغرفة أكبر بسريرين"
+        4 -> "شرفة سحابية وحديقة صغيرة، وثلاثة أسرّة"
+        else -> "أضواء متلألئة وبريق: منزل متكامل"
     }
 }

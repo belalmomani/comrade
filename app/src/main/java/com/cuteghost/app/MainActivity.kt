@@ -73,6 +73,11 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.neglectButton).setOnClickListener { testNeglect() }
         findViewById<Button>(R.id.seasonButton).setOnClickListener { testSeasonNow() }
         findViewById<Button>(R.id.peekButton).setOnClickListener { testSurprise(true) }
+        findViewById<Button>(R.id.giveButton).setOnClickListener {
+            Wardrobe.addStars(this, 20)
+            HomeStore.addMaterials(this, 10)
+            android.widget.Toast.makeText(this, "أُضيفت 20 نجمة و10 مواد للتجربة", android.widget.Toast.LENGTH_SHORT).show()
+        }
         val mischiefPrefs = getSharedPreferences("ghost_prefs", MODE_PRIVATE)
         findViewById<android.widget.CheckBox>(R.id.mischiefCheck).apply {
             isChecked = mischiefPrefs.getBoolean("mischief_enabled", true)
