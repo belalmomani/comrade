@@ -141,6 +141,11 @@ object Wardrobe {
         return items.firstOrNull { it.slot == slot && it.variant == v }
     }
 
+    /** Wears [variant] in the slot (0 = nothing). */
+    fun equip(context: Context, slot: Slot, variant: Int) {
+        prefs(context).edit().putInt(key(slot), variant).apply()
+    }
+
     /** Next unlocked variant of the slot, or nothing after the last one. */
     fun cycle(context: Context, slot: Slot) {
         val unlocked = items.filter { it.slot == slot && isUnlocked(context, it) }.map { it.variant }.sorted()
