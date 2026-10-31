@@ -60,6 +60,9 @@ class GhostWindow(
 
         /** Babies drink their milk every two hours. */
         const val MILK_INTERVAL_MS = 2L * 60L * 60L * 1000L
+
+        /** Every ghost asks for a bath every six hours. */
+        const val BATH_INTERVAL_MS = 6L * 60L * 60L * 1000L
         const val RETRY_MS = 5L * 60L * 1000L
         const val MIN_GAP_MS = 5L * 60L * 1000L
 
@@ -93,6 +96,7 @@ class GhostWindow(
     private val drinkIntervalMs: Long get() = if (id == "mother") THIRST_INTERVAL_MS else MILK_INTERVAL_MS
 
     var nextFoodAt = 0L
+    var nextBathAt = 0L
     var nextWaterAt = 0L
 
     /** The ghost does not ask again before this time (it still can be tapped to be cared for). */
@@ -513,6 +517,7 @@ class GhostWindow(
     private fun dueNeedInternal(now: Long, ignoreAskAfter: Boolean): Pair<FeedView.Mode, Long>? {
         if (nextFoodAt == 0L) nextFoodAt = now + HUNGER_INTERVAL_MS
         if (nextWaterAt == 0L) nextWaterAt = now + drinkIntervalMs
+        if (nextBathAt == 0L) nextBathAt = now + BATH_INTERVAL_MS
         if (!ignoreAskAfter && now < askAfter) return null
         val food = now >= nextFoodAt
         val water = now >= nextWaterAt
@@ -522,6 +527,7 @@ class GhostWindow(
                 else Pair(FeedView.Mode.WATER, nextWaterAt)
             food -> Pair(FeedView.Mode.FOOD, nextFoodAt)
             water -> Pair(FeedView.Mode.WATER, nextWaterAt)
+            now >= nextBathAt -> Pair(FeedView.Mode.BATH, nextBathAt)
             else -> null
         }
     }
@@ -582,7 +588,11 @@ class GhostWindow(
         f.visibility = View.VISIBLE
         f.begin(winW, winH, bubbleH, trayH, mode)
         ghost.setFeedState(
-            if (mode == FeedView.Mode.FOOD) GhostView.FeedState.HUNGRY else GhostView.FeedState.THIRSTY
+            when (mode) {
+                FeedView.Mode.FOOD -> GhostView.FeedState.HUNGRY
+                FeedView.Mode.WATER -> GhostView.FeedState.THIRSTY
+                else -> GhostView.FeedState.NONE
+            }
         )
         handler.removeCallbacks(feedTimeout)
         handler.postDelayed(feedTimeout, FEED_TIMEOUT_MS)
@@ -626,10 +636,11 @@ class GhostWindow(
         val now = System.currentTimeMillis()
         if (completed) {
             // This need is satisfied. Anything else that is still due stays due (neglect goes on).
-            if (mode == FeedView.Mode.WATER) {
-                nextWaterAt = now + drinkIntervalMs
-            } else {
-                nextFoodAt = now + HUNGER_INTERVAL_MS
+            when (mode) {
+                FeedView.Mode.WATER -> nextWaterAt = now + drinkIntervalMs
+                FeedView.Mode.FOOD -> nextFoodAt = now + HUNGER_INTERVAL_MS
+                FeedView.Mode.BATH -> nextBathAt = now + BATH_INTERVAL_MS
+                else -> Unit // brushing teeth has no timer: it follows every meal
             }
             askAfter = now + MIN_GAP_MS
         } else {

@@ -177,4 +177,6 @@
     <string name="mischief_allow">السماح للأشباح بمشاغبات مزحة (شاشة متشققة وهمية، ألوان، فقاعات، رقص مضحك)</string>
     <string name="mischief_now">جرّب مشاغبة الآن</string>
     <string name="give_now">جرّب: أضف 20 نجمة و10 مواد</string>
+    <string name="bath_now">جرّب: الاستحمام الآن</string>
+    <string name="brush_now">جرّب: تنظيف الأسنان الآن</string>
 </resources>

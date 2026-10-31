@@ -74,6 +74,8 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.neglectButton).setOnClickListener { testNeglect() }
         findViewById<Button>(R.id.seasonButton).setOnClickListener { testSeasonNow() }
         findViewById<Button>(R.id.peekButton).setOnClickListener { testSurprise(true) }
+        findViewById<Button>(R.id.bathButton).setOnClickListener { GhostOverlayService.bathNow(this) }
+        findViewById<Button>(R.id.brushButton).setOnClickListener { GhostOverlayService.brushNow(this) }
         findViewById<Button>(R.id.giveButton).setOnClickListener {
             Wardrobe.addStars(this, 20)
             HomeStore.addMaterials(this, 10)

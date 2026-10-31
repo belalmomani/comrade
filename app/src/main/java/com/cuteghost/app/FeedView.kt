@@ -30,7 +30,7 @@ class FeedView @JvmOverloads constructor(
     attrs: AttributeSet? = null
 ) : View(context, attrs) {
 
-    enum class Mode { FOOD, WATER }
+    enum class Mode { FOOD, WATER, BATH, BRUSH }
 
     interface Listener {
         fun onFeedingEnded(fed: Boolean)
@@ -48,7 +48,7 @@ class FeedView @JvmOverloads constructor(
     /** True for babies: they ask for milk in a bottle instead of water in a cup. */
     var milk = false
 
-    private enum class Kind { APPLE, BANANA, COOKIE, CUP }
+    private enum class Kind { APPLE, BANANA, COOKIE, ICECREAM, CUP, SPONGE, TOOTHBRUSH }
 
     private class Food(val kind: Kind) {
         var x = 0f
@@ -77,6 +77,14 @@ class FeedView @JvmOverloads constructor(
     private var bubbleText = ""
     private var finishTimer = -1f
     private var lastTime = 0L
+
+    // Washing and brushing: how much was rubbed, the foam on the ghost, and the "touch here" hint
+    private var scrub = 0f
+    private var hintDone = false
+    private var lastDragX = -1f
+    private var lastDragY = -1f
+    private var foamNext = 0f
+    private val foam = ArrayList<FloatArray>()
     private var clock = 0f
 
     private var winW = 0f
@@ -133,7 +141,12 @@ class FeedView @JvmOverloads constructor(
         mode = newMode
 
         foods.clear()
-        val kinds = if (mode == Mode.FOOD) listOf(Kind.APPLE, Kind.BANANA, Kind.COOKIE) else listOf(Kind.CUP)
+        val kinds = when (mode) {
+            Mode.FOOD -> listOf(Kind.APPLE, Kind.BANANA, Kind.ICECREAM, Kind.COOKIE)
+            Mode.WATER -> listOf(Kind.CUP)
+            Mode.BATH -> listOf(Kind.SPONGE)
+            Mode.BRUSH -> listOf(Kind.TOOTHBRUSH)
+        }
         for ((i, kind) in kinds.withIndex()) {
             val f = Food(kind)
             f.homeX = winW * (2 * i + 1) / (2f * kinds.size)
@@ -149,8 +162,18 @@ class FeedView @JvmOverloads constructor(
         dragFood = null
         eatingNow = false
         finishTimer = -1f
-        bubbleText = if (mode == Mode.WATER && milk) "أرجوك أعطني حليبي في الرضاعة" else
-            context.getString(if (mode == Mode.FOOD) R.string.feed_ask else R.string.drink_ask)
+        scrub = 0f
+        hintDone = false
+        lastDragX = -1f
+        lastDragY = -1f
+        foamNext = 0f
+        foam.clear()
+        bubbleText = when (mode) {
+            Mode.BATH -> "أرجوك حمّمني: افرك بالإسفنجة"
+            Mode.BRUSH -> "الآن ننظف أسناني: حرّك الفرشاة عند فمي"
+            Mode.WATER -> if (milk) "أرجوك أعطني حليبي في الرضاعة" else context.getString(R.string.drink_ask)
+            else -> context.getString(R.string.feed_ask)
+        }
         lastTime = SystemClock.uptimeMillis()
         invalidate()
     }
@@ -158,6 +181,7 @@ class FeedView @JvmOverloads constructor(
     fun end() {
         active = false
         foods.clear()
+        foam.clear()
         dragFood = null
         fedFood = null
         eatingNow = false
@@ -175,6 +199,7 @@ class FeedView @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN -> {
                 val f = hit(e.x, e.y) ?: return false
                 dragFood = f
+                hintDone = true
                 f.returning = false
                 dragDx = f.x - e.x
                 dragDy = f.y - e.y
@@ -203,11 +228,17 @@ class FeedView @JvmOverloads constructor(
         return false
     }
 
-    private fun waitingState() =
-        if (mode == Mode.FOOD) GhostView.FeedState.HUNGRY else GhostView.FeedState.THIRSTY
+    private fun waitingState() = when (mode) {
+        Mode.FOOD -> GhostView.FeedState.HUNGRY
+        Mode.WATER -> GhostView.FeedState.THIRSTY
+        else -> GhostView.FeedState.NONE
+    }
 
-    private fun activeState() =
-        if (mode == Mode.FOOD) GhostView.FeedState.EATING else GhostView.FeedState.DRINKING
+    private fun activeState() = when (mode) {
+        Mode.FOOD -> GhostView.FeedState.EATING
+        Mode.WATER -> GhostView.FeedState.DRINKING
+        else -> GhostView.FeedState.NONE
+    }
 
     /** Generous touch target so small fingers can grab items easily. */
     private fun hit(x: Float, y: Float): Food? {
@@ -248,10 +279,17 @@ class FeedView @JvmOverloads constructor(
             g.mouthPoint(mouth)
             val mx = g.left + mouth[0]
             val my = g.top + mouth[1]
-            // Start a little before touching the mouth, stop a bit further away (no flicker)
-            val limit = (if (eatingNow) 42f else 32f) * d * mouthZoneScale
-            near = hypot(drag.x - mx, drag.y - my) <= limit
-            if (near) cupDir = if (drag.x < mx) 1f else -1f
+            if (mode == Mode.BATH) {
+                // The sponge works anywhere on the ghost's body
+                val pad = 6f * d
+                near = drag.x in (g.left - pad)..(g.right + pad) && drag.y in (g.top - pad)..(g.bottom + pad)
+            } else {
+                // Start a little before touching the mouth, stop a bit further away (no flicker)
+                val base = if (mode == Mode.BRUSH) 40f else 32f
+                val limit = (if (eatingNow) base + 10f else base) * d * mouthZoneScale
+                near = hypot(drag.x - mx, drag.y - my) <= limit
+                if (near) cupDir = if (drag.x < mx) 1f else -1f
+            }
         }
         if (near != eatingNow) {
             eatingNow = near
@@ -266,8 +304,46 @@ class FeedView @JvmOverloads constructor(
             }
         }
 
+        // Washing and brushing progress by rubbing: the sponge over the body, the brush at the mouth
+        for (fm in foam) fm[3] += dt
+        if ((mode == Mode.BATH || mode == Mode.BRUSH) && drag != null && !fed) {
+            if (eatingNow && lastDragX >= 0f) {
+                val moved = hypot(drag.x - lastDragX, drag.y - lastDragY)
+                scrub += moved
+                foamNext -= moved
+                if (foamNext <= 0f) {
+                    foamNext = (if (mode == Mode.BATH) 20f else 12f) * d
+                    val size = (6f + Math.random().toFloat() * 7f) * d * (if (mode == Mode.BATH) 1f else 0.6f)
+                    foam.add(
+                        floatArrayOf(
+                            drag.x + (Math.random().toFloat() - 0.5f) * 16f * d,
+                            drag.y + (Math.random().toFloat() - 0.5f) * 16f * d,
+                            size, 0f
+                        )
+                    )
+                }
+                drag.eaten = (scrub / ((if (mode == Mode.BATH) 380f else 150f) * d)).coerceIn(0f, 1f)
+                if (drag.eaten >= 1f) {
+                    fedFood = drag
+                    dragFood = null
+                    eatingNow = false
+                    fed = true
+                    finishTimer = 0f
+                    drag.returning = true
+                    bubbleText = if (mode == Mode.BATH) "ما أنظفني! شكرًا" else "أسناني تلمع! شكرًا"
+                    g?.setFeedState(GhostView.FeedState.NONE)
+                    g?.dirty = false
+                    g?.showFed()
+                }
+            }
+            lastDragX = drag.x
+            lastDragY = drag.y
+        } else if (drag == null) {
+            lastDragX = -1f
+        }
+
         // Eating / drinking only progresses while the item is held at the mouth
-        if (eatingNow && drag != null) {
+        if (eatingNow && drag != null && (mode == Mode.FOOD || mode == Mode.WATER)) {
             drag.eaten += dt / (if (drag.kind == Kind.CUP) 2.6f else 2.4f)
             if (drag.eaten >= 1f) {
                 drag.eaten = 1f
@@ -293,10 +369,10 @@ class FeedView @JvmOverloads constructor(
         if (finishTimer >= 0f) {
             finishTimer += dt
             val cup = fedFood
-            if (cup != null && cup.kind == Kind.CUP) {
+            if (cup != null && (cup.kind == Kind.CUP || cup.kind == Kind.SPONGE || cup.kind == Kind.TOOTHBRUSH)) {
                 cup.alpha = (1f - (finishTimer - 2.0f) / 0.6f).coerceIn(0f, 1f)
             }
-            if (finishTimer >= 2.6f) {
+            if (finishTimer >= (if (mode == Mode.BATH) 3.4f else 2.6f)) {
                 finishTimer = -1f
                 active = false
                 post { listener?.onFeedingEnded(true) }
@@ -316,8 +392,11 @@ class FeedView @JvmOverloads constructor(
         if (active) step(dt)
 
         drawText(canvas)
+        drawFoam(canvas)
         for (f in foods) if (f !== dragFood) drawItem(canvas, f)
         dragFood?.let { drawItem(canvas, it) }
+        drawHint(canvas)
+        drawRinse(canvas)
 
         if (active) postInvalidateOnAnimation()
     }
@@ -344,9 +423,10 @@ class FeedView @JvmOverloads constructor(
         val isCup = f.kind == Kind.CUP
         val bob = if (f !== dragFood && !f.returning && !fed) sin(clock * 3f + f.homeX * 0.01f) * 2f * d else 0f
         val lift = if (f === dragFood) 1.1f else 1f
-        val shrink = if (isCup) 1f else 1f - 0.88f * f.eaten
+        val shrinks = f.kind == Kind.APPLE || f.kind == Kind.BANANA || f.kind == Kind.COOKIE || f.kind == Kind.ICECREAM
+        val shrink = if (shrinks) 1f - 0.88f * f.eaten else 1f
         val sc = f.appear * shrink * lift * (60f * d / 56f)
-        val a = f.alpha * (if (isCup) 1f else 1f - 0.4f * f.eaten)
+        val a = f.alpha * (if (shrinks) 1f - 0.4f * f.eaten else 1f)
 
         val saved = c.save()
         c.translate(f.x, f.y + bob)
@@ -358,6 +438,9 @@ class FeedView @JvmOverloads constructor(
             Kind.BANANA -> drawBanana(c)
             Kind.COOKIE -> drawCookie(c)
             Kind.CUP -> if (milk) drawBottle(c, 1f - f.eaten) else drawCup(c, 1f - f.eaten)
+            Kind.ICECREAM -> drawIceCream(c)
+            Kind.SPONGE -> drawSponge(c)
+            Kind.TOOTHBRUSH -> drawToothbrush(c)
         }
         c.restoreToCount(saved)
     }
@@ -423,6 +506,163 @@ class FeedView @JvmOverloads constructor(
             c.drawOval(rect, fillPaint)
             i += 2
         }
+    }
+
+    private fun drawIceCream(c: Canvas) {
+        // Waffle cone
+        path.reset()
+        path.moveTo(-13f, 4f)
+        path.lineTo(13f, 4f)
+        path.lineTo(0f, 36f)
+        path.close()
+        fillPaint.style = Paint.Style.FILL
+        fillPaint.shader = null
+        fillPaint.color = Color.parseColor("#E0A458")
+        c.drawPath(path, fillPaint)
+        linePaint.style = Paint.Style.STROKE
+        linePaint.color = Color.parseColor("#B97A3E")
+        linePaint.strokeWidth = 1.6f
+        c.drawLine(-8f, 9f, 3f, 25f, linePaint)
+        c.drawLine(8f, 9f, -3f, 25f, linePaint)
+        // Two scoops, a drip and a cherry
+        fillPaint.color = Color.parseColor("#FFB6D0")
+        c.drawCircle(0f, -1f, 15f, fillPaint)
+        rect.set(-13f, 5f, -8.5f, 15f)
+        c.drawRoundRect(rect, 2.2f, 2.2f, fillPaint)
+        fillPaint.color = Color.parseColor("#FFF1D6")
+        c.drawCircle(-1f, -15f, 12f, fillPaint)
+        fillPaint.color = Color.parseColor("#E63946")
+        c.drawCircle(1f, -28f, 4.2f, fillPaint)
+        linePaint.color = Color.parseColor("#6D4C41")
+        c.drawLine(1f, -32f, 5f, -38f, linePaint)
+        fillPaint.color = Color.parseColor("#88FFFFFF")
+        c.drawCircle(-6f, -18f, 3f, fillPaint)
+    }
+
+    private fun drawSponge(c: Canvas) {
+        fillPaint.style = Paint.Style.FILL
+        fillPaint.shader = null
+        rect.set(-24f, -13f, 24f, 15f)
+        fillPaint.color = Color.parseColor("#FFD54A")
+        c.drawRoundRect(rect, 9f, 9f, fillPaint)
+        fillPaint.color = Color.parseColor("#E0A800")
+        val pores = floatArrayOf(-12f, -3f, 4f, 5f, 14f, -4f, -4f, 8f, 18f, 6f)
+        var i = 0
+        while (i < pores.size) {
+            c.drawCircle(pores[i], pores[i + 1], 2.2f, fillPaint)
+            i += 2
+        }
+        fillPaint.color = Color.WHITE
+        c.drawCircle(-10f, -16f, 8f, fillPaint)
+        c.drawCircle(4f, -20f, 10f, fillPaint)
+        c.drawCircle(16f, -15f, 7f, fillPaint)
+    }
+
+    private fun drawToothbrush(c: Canvas) {
+        val saved = c.save()
+        c.rotate(-28f)
+        fillPaint.style = Paint.Style.FILL
+        fillPaint.shader = null
+        rect.set(-4.5f, -28f, 4.5f, 12f)
+        fillPaint.color = Color.parseColor("#4FC3F7")
+        c.drawRoundRect(rect, 4f, 4f, fillPaint)
+        rect.set(-8f, 10f, 8f, 18f)
+        fillPaint.color = Color.parseColor("#0288D1")
+        c.drawRoundRect(rect, 2f, 2f, fillPaint)
+        fillPaint.color = Color.WHITE
+        for (k in 0 until 5) {
+            rect.set(-7f + k * 3.2f, 18f, -5.2f + k * 3.2f, 28f)
+            c.drawRect(rect, fillPaint)
+        }
+        rect.set(-6f, 16f, 6f, 21f)
+        fillPaint.color = Color.parseColor("#7CE0A3")
+        c.drawRoundRect(rect, 2.5f, 2.5f, fillPaint)
+        c.restoreToCount(saved)
+    }
+
+    /** White foam on the ghost: it pops up where the sponge or the brush rubbed, and fades at the end. */
+    private fun drawFoam(c: Canvas) {
+        if (foam.isEmpty()) return
+        val fade = if (fed) (1f - (finishTimer - (if (mode == Mode.BATH) 1.2f else 1.0f)) / 1.2f).coerceIn(0f, 1f) else 1f
+        for (fm in foam) {
+            val pop = min(1f, fm[3] / 0.2f)
+            fillPaint.style = Paint.Style.FILL
+            fillPaint.shader = null
+            fillPaint.color = Color.WHITE
+            fillPaint.alpha = (235f * fade).toInt()
+            c.drawCircle(fm[0], fm[1], fm[2] * pop, fillPaint)
+            linePaint.style = Paint.Style.STROKE
+            linePaint.color = Color.parseColor("#9ED8F5")
+            linePaint.alpha = (200f * fade).toInt()
+            linePaint.strokeWidth = 1.4f * d
+            c.drawCircle(fm[0], fm[1], fm[2] * pop, linePaint)
+        }
+        fillPaint.alpha = 255
+        linePaint.alpha = 255
+    }
+
+    /** After the foam: a shower rinses the ghost with falling drops. */
+    private fun drawRinse(c: Canvas) {
+        val g = ghost ?: return
+        if (mode != Mode.BATH || !fed || finishTimer < 0.6f) return
+        val top = bubbleH + 2f * d
+        val bottom = g.bottom.toFloat()
+        linePaint.style = Paint.Style.STROKE
+        linePaint.strokeWidth = 2.4f * d
+        linePaint.color = Color.parseColor("#66BFFF")
+        for (i in 0 until 28) {
+            val x = g.left + ((i * 0.618f) % 1f) * g.width
+            val y = top + ((finishTimer * 1.5f + i * 0.137f) % 1f) * (bottom - top)
+            c.drawLine(x, y, x - 2f * d, y + 10f * d, linePaint)
+        }
+        fillPaint.style = Paint.Style.FILL
+        fillPaint.shader = null
+        fillPaint.color = Color.parseColor("#9AA5B1")
+        rect.set(g.left + g.width / 2f - 18f * d, top - 6f * d, g.left + g.width / 2f + 18f * d, top + 6f * d)
+        c.drawRoundRect(rect, 6f * d, 6f * d, fillPaint)
+    }
+
+    /** A glowing dot that shows a small child where to drag, until the first touch. */
+    private fun drawHint(c: Canvas) {
+        val g = ghost ?: return
+        if (!active || fed || hintDone || foods.isEmpty()) return
+        val first = foods[0]
+        if (first.appear < 1f) return
+        g.mouthPoint(mouth)
+        val tx: Float
+        val ty: Float
+        if (mode == Mode.BATH) {
+            tx = g.left + g.width / 2f
+            ty = g.top + g.height * 0.55f
+        } else {
+            tx = g.left + mouth[0]
+            ty = g.top + mouth[1]
+        }
+        val p = (clock * 0.55f) % 1f
+        var x: Float
+        var y: Float
+        if (p < 0.55f) {
+            val k = p / 0.55f
+            val e = k * k * (3f - 2f * k)
+            x = first.homeX + (tx - first.homeX) * e
+            y = first.homeY + (ty - first.homeY) * e
+        } else if (mode == Mode.BATH || mode == Mode.BRUSH) {
+            x = tx + sin(clock * 8f) * 16f * d
+            y = ty
+        } else {
+            x = tx
+            y = ty
+        }
+        val pulse = 1f + 0.18f * sin(clock * 6f)
+        fillPaint.style = Paint.Style.FILL
+        fillPaint.shader = null
+        fillPaint.color = Color.WHITE
+        fillPaint.alpha = 215
+        c.drawCircle(x, y, 13f * d * pulse, fillPaint)
+        fillPaint.color = Color.parseColor("#FF4F9A")
+        fillPaint.alpha = 230
+        c.drawCircle(x, y, 6.5f * d, fillPaint)
+        fillPaint.alpha = 255
     }
 
     private fun mixC(a: Int, b: Int, t: Float): Int {

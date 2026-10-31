@@ -1255,11 +1255,39 @@ class GhostView @JvmOverloads constructor(
         canvas.restore()
     }
 
+    /** True when the ghost needs a bath: brown smudges and little smell lines. */
+    var dirty = false
+    private val dirtPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    private fun drawDirt(c: Canvas) {
+        dirtPaint.style = Paint.Style.FILL
+        dirtPaint.color = Color.parseColor("#8D6E4A")
+        dirtPaint.alpha = 150
+        val spots = floatArrayOf(27f, 72f, 5f, 68f, 80f, 6f, 47f, 98f, 5f, 76f, 58f, 4f, 35f, 102f, 4f, 56f, 76f, 3.5f)
+        var i = 0
+        while (i < spots.size) {
+            c.drawCircle(spots[i], spots[i + 1], spots[i + 2], dirtPaint)
+            i += 3
+        }
+        dirtPaint.style = Paint.Style.STROKE
+        dirtPaint.strokeWidth = 2f
+        dirtPaint.strokeCap = Paint.Cap.ROUND
+        dirtPaint.color = Color.parseColor("#7FB069")
+        dirtPaint.alpha = 190
+        for (k in 0 until 3) {
+            val x = 28f + k * 22f
+            val wob = sin(time * 3f + k) * 2f
+            c.drawLine(x, 8f, x + wob, 0f, dirtPaint)
+            c.drawLine(x + wob, 0f, x, -8f, dirtPaint)
+        }
+    }
+
     private fun drawGhost(c: Canvas) {
         drawBehind(c)
         c.drawPath(body, bodyPaint)
         c.drawPath(body, shadePaint)
         c.drawCircle(30f, 28f, 15f, highlightPaint)
+        if (dirty) drawDirt(c)
 
         // Eyes
         val rx = cur[0]

@@ -63,6 +63,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         private const val KEY_EGG_Y = "egg_y"
         private const val KEY_LAST_EGG_DAY = "last_egg_day"
         private const val KEY_EGG_MYSTERY = "egg_mystery"
+        private const val KEY_NEXT_BATH = "next_bath"
         private const val KEY_SEASON_DAY = "season_day"
         private const val KEY_ALIVE = "last_alive_at"
 
@@ -96,6 +97,8 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
 
         private const val ACTION_FEED_NOW = "com.companion.theghost.FEED_NOW"
         private const val ACTION_EGG_NOW = "com.companion.theghost.EGG_NOW"
+        private const val ACTION_BATH_NOW = "com.companion.theghost.BATH_NOW"
+        private const val ACTION_BRUSH_NOW = "com.companion.theghost.BRUSH_NOW"
         private const val ACTION_MISCHIEF_NOW = "com.companion.theghost.MISCHIEF_NOW"
         private const val ACTION_GROW_NOW = "com.companion.theghost.GROW_NOW"
         private const val ACTION_NEGLECT_NOW = "com.companion.theghost.NEGLECT_NOW"
@@ -144,6 +147,16 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
                 context,
                 Intent(context, GhostOverlayService::class.java).setAction(ACTION_GROW_NOW)
             )
+        }
+
+        /** The big ghost asks for a bath right now (testing). */
+        fun bathNow(context: Context) {
+            startService(context, Intent(context, GhostOverlayService::class.java).setAction(ACTION_BATH_NOW))
+        }
+
+        /** The big ghost asks to brush its teeth right now (testing). */
+        fun brushNow(context: Context) {
+            startService(context, Intent(context, GhostOverlayService::class.java).setAction(ACTION_BRUSH_NOW))
         }
 
         /** A ghost plays a pretend prank right now (testing). */
@@ -353,6 +366,10 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             layEgg(EGG_TEST_MS, true)
         } else if (action == ACTION_GROW_NOW) {
             growNow()
+        } else if (action == ACTION_BATH_NOW) {
+            mother?.let { it.ghost.dirty = true; beginSession(it, FeedView.Mode.BATH) }
+        } else if (action == ACTION_BRUSH_NOW) {
+            mother?.let { beginSession(it, FeedView.Mode.BRUSH) }
         } else if (action == ACTION_MISCHIEF_NOW) {
             startMischief(true)
         } else if (action == ACTION_NEGLECT_NOW) {
@@ -480,6 +497,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         val m = GhostWindow(this, wm, "mother", 1f, p.getInt(KEY_MOTHER_COLOR, -1), this)
         m.nextFoodAt = p.getLong(KEY_NEXT_HUNGER, 0L)
         m.nextWaterAt = p.getLong(KEY_NEXT_THIRST, 0L)
+        m.nextBathAt = p.getLong(KEY_NEXT_BATH, 0L)
 
         // All babies are remembered; they live inside the house
         val count = p.getInt(KEY_BABY_COUNT, 0).coerceAtLeast(0)
@@ -492,6 +510,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             b.twin = p.getBoolean("b${n}_twin", false)
             b.nextFoodAt = p.getLong("b${n}_food", 0L)
             b.nextWaterAt = p.getLong("b${n}_water", 0L)
+            b.nextBathAt = p.getLong("b${n}_bath", 0L)
             babies.add(b)
         }
         babyTotal = maxOf(p.getInt(KEY_BABY_TOTAL, 0), count)
@@ -567,6 +586,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         for (g in listOf(m) + babies) {
             if (g.nextFoodAt != 0L) g.nextFoodAt += offline
             if (g.nextWaterAt != 0L) g.nextWaterAt += offline
+            if (g.nextBathAt != 0L) g.nextBathAt += offline
         }
     }
 
@@ -593,6 +613,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             e.putInt(KEY_Y, it.restY)
             e.putLong(KEY_NEXT_HUNGER, it.nextFoodAt)
             e.putLong(KEY_NEXT_THIRST, it.nextWaterAt)
+            e.putLong(KEY_NEXT_BATH, it.nextBathAt)
             e.putInt(KEY_MOTHER_COLOR, it.colorIndex)
         }
         e.putInt(KEY_BABY_COUNT, babies.size)
@@ -603,6 +624,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             e.putInt("b${n}_meals", b.meals)
             e.putLong("b${n}_food", b.nextFoodAt)
             e.putLong("b${n}_water", b.nextWaterAt)
+            e.putLong("b${n}_bath", b.nextBathAt)
             e.putBoolean("b${n}_twin", b.twin)
         }
         e.putBoolean(KEY_FED_FLAG, fedFlag)
@@ -658,8 +680,8 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         if (completed) {
             if (who === mother) {
                 // Only the big ghost's completed meals and drinks count toward laying an egg
-                if (mode == FeedView.Mode.FOOD) fedFlag = true else waterFlag = true
-            } else {
+                if (mode == FeedView.Mode.FOOD) fedFlag = true else if (mode == FeedView.Mode.WATER) waterFlag = true
+            } else if (mode == FeedView.Mode.FOOD || mode == FeedView.Mode.WATER) {
                 // Every meal and every bottle of milk makes a baby grow by 1%
                 who.meals++
                 who.applyScale(Family.babyScale(who.meals))
@@ -669,13 +691,20 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
                 }
             }
         }
-        if (completed) {
+        if (completed && (mode == FeedView.Mode.FOOD || mode == FeedView.Mode.WATER)) {
             // Care earns a star and a building material for the houses
             HomeStore.addMaterials(this, 1)
             announceGifts(
                 Wardrobe.recordCare(this, mode == FeedView.Mode.FOOD, dayNumber()) +
                     Wardrobe.addStars(this, 1)
             )
+        } else if (completed && mode == FeedView.Mode.BATH) {
+            HomeStore.addMaterials(this, 1)
+            announceGifts(Wardrobe.addStars(this, 1))
+        }
+        // After a meal the ghost brushes its teeth: the child rubs the brush at its mouth
+        if (completed && mode == FeedView.Mode.FOOD) {
+            handler.postDelayed({ if (!destroyed) beginSession(who, FeedView.Mode.BRUSH) }, CELEBRATION_LOCK_MS + 500L)
         }
         persist()
         updateNeglectVisuals()
@@ -726,6 +755,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         for (w in shownGhosts()) {
             if (w in dying) continue
             w.ghost.setNeglect(minOf(3, w.neglectLevel(now)))
+            w.ghost.dirty = w.nextBathAt != 0L && now >= w.nextBathAt
         }
     }
 
@@ -1455,6 +1485,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         for (g in allGhosts()) {
             if (g.nextFoodAt != 0L) g.nextFoodAt += deltaMs
             if (g.nextWaterAt != 0L) g.nextWaterAt += deltaMs
+            if (g.nextBathAt != 0L) g.nextBathAt += deltaMs
         }
     }
 
