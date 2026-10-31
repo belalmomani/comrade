@@ -1,5 +1,180 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">ديسكاتي</string>
-    <string name="phase1_placeholder">هيكل المشروع الأولي — الواجهة تُنفذ في المرحلة 2</string>
+    <string name="app_name">Cute Ghost</string>
+    <string name="main_title">الشبح اللطيف</string>
+    <string name="show_ghost">إظهار الشبح</string>
+    <string name="hide_ghost">إخفاء الشبح</string>
+    <string name="status_running">الحالة: الشبح ظاهر الآن</string>
+    <string name="status_stopped">الحالة: الشبح مخفي</string>
+    <string name="permission_title">صلاحية الظهور فوق التطبيقات</string>
+    <string name="permission_message">يحتاج التطبيق إلى صلاحية «الظهور فوق التطبيقات الأخرى» ليعرض الشبح. سنفتح لك إعدادات أندرويد، فعّل الخيار لتطبيق Cute Ghost ثم ارجع إلى التطبيق.</string>
+    <string name="open_settings">فتح الإعدادات</string>
+    <string name="cancel">إلغاء</string>
+    <string name="permission_not_granted">لم يتم منح الصلاحية، لا يمكن إظهار الشبح.</string>
+    <string name="settings_unavailable">تعذر فتح إعدادات الصلاحية على هذا الجهاز.</string>
+    <string name="start_failed">تعذر تشغيل الشبح. حاول مرة أخرى.</string>
+    <string name="notification_channel">الشبح العائم</string>
+    <string name="notification_text">الشبح يعمل فوق التطبيقات. افتح التطبيق لإخفائه.</string>
+    <string name="version_label">الإصدار %s</string>
+    <string name="parent_button">إعدادات الأهل</string>
+    <string name="parent_gate_title">للأهل فقط</string>
+    <string name="parent_gate_message">حل المسألة للمتابعة: %1$d + %2$d = ؟</string>
+    <string name="parent_gate_wrong">الإجابة غير صحيحة</string>
+    <string name="need_key_title">مفتاح الذكاء الاصطناعي مطلوب</string>
+    <string name="need_key_message">أضف مفتاح الذكاء الاصطناعي من إعدادات الأهل قبل إظهار الشبح.</string>
+    <string name="open_parent_settings">فتح إعدادات الأهل</string>
+    <string name="mic_denied">بدون إذن الميكروفون لا يستطيع الشبح الاستماع.</string>
+    <string name="settings_title">إعدادات الأهل</string>
+    <string name="settings_disclosure">تنبيه للأهل: يُحوَّل كلام الطفل إلى نص بخدمة التعرف على الكلام في الجهاز، وقد تُرسَل المقاطع الصوتية إلى شركة الخدمة (غالبًا جوجل). ثم يُرسَل النص فقط إلى خدمة Anthropic للحصول على الرد. التطبيق لا يحفظ التسجيلات ولا المحادثات، ويُنسى سياق الحديث عند إخفاء الشبح. المفتاح يُحفظ داخل التطبيق على هذا الجهاز فقط، فلا تدخله على جهاز لا تثق به. الردود مقيّدة بتعليمات صارمة لكنها ليست مضمونة بالكامل، فيُنصح بوجود الأهل قرب الطفل.</string>
+    <string name="settings_key_hint">مفتاح Anthropic API</string>
+    <string name="settings_key_saved">المفتاح محفوظ وينتهي بـ %s. اتركه فارغًا للإبقاء عليه.</string>
+    <string name="settings_model_hint">اسم النموذج</string>
+    <string name="settings_save">حفظ</string>
+    <string name="settings_clear_key">حذف المفتاح</string>
+    <string name="settings_saved">تم الحفظ</string>
+    <string name="settings_key_cleared">تم حذف المفتاح</string>
+    <string name="say_not_heard">ما سمعتك منيح. اضغط عليّ واحكي لي مرة ثانية.</string>
+    <string name="say_no_internet">ما في إنترنت هلأ. اطلب من ماما أو بابا يساعدونا.</string>
+    <string name="say_try_later">ما قدرت أجاوبك هلأ. جرّب بعد شوي.</string>
+    <string name="tts_missing">ثبّت بيانات الصوت العربي (Google Text-to-Speech) من إعدادات الجهاز.</string>
+    <string name="stt_missing">خدمة التعرف على الكلام غير متوفرة على هذا الجهاز.</string>
+    <string name="key_invalid">مفاتيح الذكاء الاصطناعي المضافة غير صالحة.</string>
+    <string name="say_not_ready">لسا ما صرت جاهز أحكي معك. اطلب من ماما أو بابا.</string>
+    <string name="main_privacy_note">تنبيه للأهل: يُحوَّل كلام الطفل إلى نص بخدمة التعرف على الكلام في الجهاز (قد تُرسَل المقاطع الصوتية إلى جوجل)، ثم يُرسَل النص فقط إلى خدمة الذكاء الاصطناعي. لا يحفظ التطبيق التسجيلات ولا المحادثات. الردود مقيّدة بتعليمات صارمة لكنها ليست مضمونة بالكامل، فيُنصح بوجود الأهل قرب الطفل.</string>
+    <string name="feed_ask">أرجوك أطعمني، أنا جائع</string>
+    <string name="feed_thanks">شكرًا! طعمه لذيذ</string>
+    <string name="feed_now">جرّب الإطعام الآن</string>
+    <string name="feed_need_ghost">أظهر الشبح أولًا</string>
+    <string name="main_privacy_note_local">هذا التطبيق لا يستخدم الميكروفون ولا يجمع أي بيانات. يتصل بالإنترنت فقط للتحقق من وجود تحديث للتطبيق.</string>
+    <string name="drink_ask">أرجوك اسقني، أنا عطشان</string>
+    <string name="drink_thanks">آه، ارتحت! شكرًا</string>
+    <string name="drink_now">جرّب السقي الآن</string>
+    <string name="egg_now">جرّب البيضة (فقس سريع)</string>
+    <string name="update_check">التحقق من وجود تحديث</string>
+    <string name="update_available">إصدار جديد متاح: %s</string>
+    <string name="update_download">تحميل وتثبيت التحديث</string>
+    <string name="update_downloading">جارٍ التنزيل… %1$d%%</string>
+    <string name="update_downloading_unknown">جارٍ التنزيل…</string>
+    <string name="update_installing">جارٍ التثبيت… أكّد في النافذة التي ستظهر</string>
+    <string name="update_none">لا يوجد إصدار أحدث (أو تعذّر الاتصال بالإنترنت)</string>
+    <string name="update_allow_install">اسمح للتطبيق بتثبيت التطبيقات من هذه الشاشة ثم اضغط «تحميل وتثبيت التحديث» مرة أخرى.</string>
+    <string name="update_download_failed">تعذّر تنزيل التحديث. تحقق من الإنترنت وحاول مرة أخرى.</string>
+    <string name="update_bad_file">الملف المنزَّل ليس تحديثًا صالحًا لهذا التطبيق.</string>
+    <string name="update_not_newer">الملف المنزَّل ليس أحدث من الإصدار الحالي.</string>
+    <string name="update_signature_mismatch">توقيع الإصدار الجديد يختلف عن توقيع النسخة المثبتة، لذلك لا يستطيع أندرويد تثبيته فوقها. أضف سرّي التوقيع في GitHub ثم ابنِ من جديد. وقد تحتاج لحذف النسخة الحالية مرة واحدة فقط.</string>
+    <string name="update_install_failed">تعذّر بدء التثبيت.</string>
+    <string name="update_install_conflict">تعذّر التثبيت: التوقيع أو رقم الإصدار غير متوافق مع النسخة المثبتة.</string>
+    <string name="update_install_cancelled">أُلغي التثبيت.</string>
+    <string name="notif_channel_updates">تحديثات التطبيق</string>
+    <string name="update_notif_title">تحديث جديد للشبح</string>
+    <string name="update_notif_text">الإصدار %s متاح. اضغط للتحميل والتثبيت.</string>
+    <string name="names_hint">اسم الطفل (أو عدة أسماء مفصولة بفاصلة)</string>
+    <string name="names_save">حفظ الأسماء</string>
+    <string name="names_saved">تم حفظ الأسماء</string>
+    <string name="neglect_now">جرّب الإهمال (مرحلة تالية)</string>
+    <string name="ghost_big">الشبح الكبير</string>
+    <string name="ghost_baby_number">الشبح الصغير رقم %1$d</string>
+    <string name="notice_death">مات %1$s من الجوع والعطش! يجب أن نطعمه ونسقيه.</string>
+    <string name="notice_death_heir">مات %1$s من الجوع والعطش! يجب أن نطعمه ونسقيه.\nوصار %2$s هو الشبح الكبير الآن.</string>
+    <string name="notice_death_new">مات %1$s من الجوع والعطش! يجب أن نطعمه ونسقيه.\nوظهر شبح جديد يحتاج إلى رعايتك.</string>
+
+    <string-array name="ghost_color_names">
+        <item>الشبح النعناعي</item>
+        <item>الشبح الأزرق</item>
+        <item>الشبح الخوخي</item>
+        <item>الشبح البنفسجي</item>
+        <item>الشبح الأصفر</item>
+        <item>الشبح الوردي</item>
+        <item>الشبح الأخضر</item>
+    </string-array>
+
+    <!-- Greetings: morning, evening, night -->
+    <string-array name="greetings_named">
+        <item>صباح الخير يا %1$s!</item>
+        <item>مساء الخير يا %1$s!</item>
+        <item>تصبح على خير يا %1$s!</item>
+    </string-array>
+    <string-array name="greetings_plain">
+        <item>صباح الخير!</item>
+        <item>مساء الخير!</item>
+        <item>تصبح على خير!</item>
+    </string-array>
+
+    <!-- Encouraging texts, shown about once an hour (the first one after the morning greeting is "let's play") -->
+    <string-array name="phrases_named">
+        <item>هيا نلعب يا %1$s!</item>
+        <item>أنت رائع يا %1$s!</item>
+        <item>أحسنت يا %1$s!</item>
+        <item>أنت بطل يا %1$s!</item>
+        <item>أنا سعيد لأنك صديقي يا %1$s!</item>
+        <item>ما أجمل ابتسامتك يا %1$s!</item>
+        <item>هل شربت الماء اليوم يا %1$s؟</item>
+        <item>لنلعب معًا يا %1$s!</item>
+        <item>أنت ذكي جدًا يا %1$s!</item>
+    </string-array>
+    <string-array name="phrases_plain">
+        <item>هيا نلعب!</item>
+        <item>أنت رائع!</item>
+        <item>أحسنت!</item>
+        <item>أنت بطل!</item>
+        <item>أنا سعيد لأنك صديقي!</item>
+        <item>ما أجمل ابتسامتك!</item>
+        <item>هل شربت الماء اليوم؟</item>
+        <item>لنلعب معًا!</item>
+        <item>أنت ذكي جدًا!</item>
+    </string-array>
+    <string name="season_now">جرّب الفصل (التالي)</string>
+    <string name="signature_label">بصمة التوقيع: %s</string>
+    <string-array name="season_messages">
+        <item>اليوم فصل الشتاء… الثلج يتساقط!</item>
+        <item>اليوم فصل الربيع… الأزهار تتطاير!</item>
+        <item>اليوم فصل الصيف… الشمس مشرقة!</item>
+        <item>اليوم فصل الخريف… أوراق الشجر تتساقط!</item>
+    </string-array>
+    <string name="notice_bedtime">تصبحون على خير! ذهبت الأشباح إلى أسرّتها.</string>
+    <string name="notice_wake">صباح الخير! استيقظت الأشباح.</string>
+    <string name="notice_gift">فتحت هدية جديدة: %1$s! ألبسها من «الخزانة».</string>
+    <string name="notice_hatched">وُلد %1$s! وهو %2$s.</string>
+    <string name="wardrobe_title">الخزانة</string>
+    <string name="wardrobe_slot_format">%1$s: %2$s</string>
+    <string name="wardrobe_unlocked">فُتحت كل الأغراض</string>
+    <string name="unlock_all_test">فتح كل الأغراض (للتجربة)</string>
+    <string name="slot_hat">القبعة</string>
+    <string name="slot_scarf">الوشاح</string>
+    <string name="slot_wings">الأجنحة</string>
+    <string name="slot_glow">اللون المضيء</string>
+    <string name="slot_trail">آثار النجوم</string>
+    <string name="item_none">بدون</string>
+    <string name="item_hat_party">قبعة الحفلة</string>
+    <string name="item_hat_crown">التاج</string>
+    <string name="item_hat_wizard">قبعة الساحر</string>
+    <string name="item_scarf_red">وشاح أحمر</string>
+    <string name="item_scarf_blue">وشاح أزرق</string>
+    <string name="item_wings">أجنحة صغيرة</string>
+    <string name="item_glow_pink">توهج وردي</string>
+    <string name="item_glow_cyan">توهج سماوي</string>
+    <string name="item_glow_gold">توهج ذهبي</string>
+    <string name="item_trail_stars">آثار النجوم</string>
+    <string-array name="personality_names">
+        <item>مرح كثير القفز</item>
+        <item>ضحوك</item>
+        <item>خجول</item>
+        <item>راقص</item>
+        <item>فضولي</item>
+    </string-array>
+    <string name="main_description">اضغط «إظهار الشبح» ليطفو فوق التطبيقات. يطلب الشبح الطعام كل ساعة والماء كل نصف ساعة، ويطعمه الطفل ويسقيه بسحب الطعام أو الكوب إلى فمه. تبيض الأم بيضة واحدة في اليوم وتفقس بعد ساعة عن صغير بلون وطبع مختلف، يسكن البيت العائم الذي يتحرك وحده، ويخرج واحد منهم في كل مرة. عند اللمس يقفز الشبح أو يضحك أو يختبئ، وإن نُقر خمس مرات متتالية يبكي. ويذهب إلى سريره وينام ليلًا. وأحيانًا يختفي أحدهم ثم يطل من حافة الشاشة، وتُفتح بوابة سحرية يخرج منها رأس غريب يرمي نجمة أو هدية، وقد يزور العائلة ضيف غريب لدقيقة. وفي الخزانة قبعات وأوشحة وأجنحة تُفتح بالرعاية والنجوم والهدايا.</string>
+    <string name="peek_now">جرّب الإطلالة من الحافة</string>
+    <string name="portal_now">جرّب البوابة السحرية</string>
+    <string name="stars_label">النجوم: %d</string>
+    <string name="notice_star">نجمة جديدة! عندك %1$d</string>
+    <string name="notice_gift_duplicate">كل الأغراض مفتوحة، فحصلت على 3 نجوم!</string>
+    <string name="notice_visitor">خرج ضيف غريب من البوابة! سيزورنا دقيقة.</string>
+    <string name="notice_no_baby">لا يوجد ابن في الخارج الآن.</string>
+    <string name="house_open">منزل الشبح</string>
+    <string name="play_open">مدينة ألعاب سحابية</string>
+    <string name="village_open">القرية</string>
+    <string name="grow_now">جرّب: كبّر ابنًا وانقله إلى القرية</string>
+    <string name="mischief_allow">السماح للأشباح بمشاغبات مزحة (شاشة متشققة وهمية، ألوان، فقاعات، رقص مضحك)</string>
+    <string name="mischief_now">جرّب مشاغبة الآن</string>
+    <string name="give_now">جرّب: أضف 20 نجمة و10 مواد</string>
 </resources>

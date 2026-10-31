@@ -161,7 +161,9 @@ class PlaygroundActivity : Activity() {
         bar.orientation = android.widget.LinearLayout.HORIZONTAL
         bar.gravity = Gravity.CENTER_VERTICAL
         bar.setPadding(dp(12), dp(30), dp(12), dp(8))
-        bar.addView(button("رجوع", Color.parseColor("#CC7C5CFF")) { finish() })
+        val backIcon = IconButtonView(this, IconButtonView.BACK, Color.parseColor("#7C5CFF"))
+        backIcon.setOnClickListener { finish() }
+        bar.addView(backIcon, android.widget.LinearLayout.LayoutParams(dp(56), dp(56)))
         val title = label("مدينة ألعاب سحابية", 16f)
         val tlp = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         tlp.setMargins(dp(10), 0, 0, 0)
