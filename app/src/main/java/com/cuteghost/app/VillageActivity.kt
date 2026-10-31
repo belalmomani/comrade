@@ -71,7 +71,9 @@ class VillageActivity : Activity() {
         back.setTextColor(Color.WHITE)
         back.background = GradientDrawable().apply { setColor(Color.parseColor("#CC7C5CFF")); cornerRadius = dp(22).toFloat() }
         back.setOnClickListener { finish() }
-        bar.addView(back)
+        val backIcon = IconButtonView(this, IconButtonView.BACK, Color.parseColor("#7C5CFF"))
+        backIcon.setOnClickListener { finish() }
+        bar.addView(backIcon, android.widget.LinearLayout.LayoutParams(dp(56), dp(56)))
         val title = TextView(this)
         title.text = "القرية  •  ${villagers.size} منزل"
         title.textSize = 16f

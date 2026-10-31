@@ -2,6 +2,7 @@ package com.cuteghost.app
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -10,7 +11,6 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
-import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
@@ -19,8 +19,9 @@ import android.widget.TextView
 import android.widget.Toast
 
 /**
- * "Ghost house": the six houses, the inside of the chosen house with its sleeping ghosts, and the
- * "decorate your house" shop with preview. Everything is saved in [HomeStore] and [FurnStore].
+ * "Ghost house", made for a three-year-old: big round picture buttons instead of words. The houses,
+ * the inside of the chosen house with its sleeping ghosts, the "decorate" shop, the upgrade, the
+ * village and the playground are each one touch away from inside the house.
  */
 class HouseActivity : Activity() {
 
@@ -40,12 +41,17 @@ class HouseActivity : Activity() {
 
     // The decoration shop
     private var panel: LinearLayout? = null
+    private var tabsRow: LinearLayout? = null
     private var itemsRow: LinearLayout? = null
     private var infoText: TextView? = null
-    private var applyBtn: Button? = null
-    private var removeBtn: Button? = null
+    private var checkBtn: IconButtonView? = null
+    private var removeBtn: IconButtonView? = null
     private var shopCat = FCat.BEDROOM
     private var selected: Furn? = null
+
+    private val green = Color.parseColor("#2EAD4B")
+    private val red = Color.parseColor("#E5484D")
+    private val purple = Color.parseColor("#7C5CFF")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -100,14 +106,14 @@ class HouseActivity : Activity() {
         return t
     }
 
-    private fun button(text: String, color: Int, onClick: () -> Unit): Button {
-        val b = Button(this)
-        b.text = text
-        b.textSize = 14f
-        b.setTextColor(Color.WHITE)
-        b.background = pill(color)
-        b.setOnClickListener { onClick() }
-        return b
+    /** A big round picture button of [sizeDp] with small margins (for a LinearLayout). */
+    private fun icon(kind: Int, color: Int, sizeDp: Int, onClick: () -> Unit): IconButtonView {
+        val v = IconButtonView(this, kind, color)
+        v.setOnClickListener { onClick() }
+        val lp = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp))
+        lp.setMargins(dp(4), dp(4), dp(4), dp(4))
+        v.layoutParams = lp
+        return v
     }
 
     // =====================================================================
@@ -123,9 +129,13 @@ class HouseActivity : Activity() {
 
         val column = LinearLayout(this)
         column.orientation = LinearLayout.VERTICAL
-        column.setPadding(dp(14), dp(34), dp(14), dp(24))
-        column.addView(label("منزل الشبح", 26f, Color.parseColor("#2B2540"), true))
-        column.addView(label("النجوم: ${Wardrobe.stars(this)}   •   المواد: ${HomeStore.materials(this)}", 15f, Color.parseColor("#5C5675"), false))
+        column.setPadding(dp(14), dp(30), dp(14), dp(24))
+        val head = LinearLayout(this)
+        head.orientation = LinearLayout.HORIZONTAL
+        head.gravity = Gravity.CENTER_VERTICAL
+        head.addView(icon(IconButtonView.BACK, purple, 60) { finish() })
+        head.addView(label("منزل الشبح", 26f, Color.parseColor("#2B2540"), true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        column.addView(head)
 
         val selectedId = HomeStore.selected(this)
         for (pair in HouseDefs.all.chunked(2)) {
@@ -141,10 +151,6 @@ class HouseActivity : Activity() {
             }
             column.addView(row)
         }
-        val blp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52))
-        blp.topMargin = dp(18)
-        column.addView(button("رجوع", Color.parseColor("#7C5CFF")) { finish() }, blp)
-
         val scroll = ScrollView(this)
         scroll.addView(column)
         root.addView(scroll, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
@@ -159,43 +165,44 @@ class HouseActivity : Activity() {
         }
     }
 
-    /** A closed house: a preview and what is needed to open it. */
+    /** A closed house: its picture, a star meter and a big green tick to open it. */
     private fun showLockedDialog(def: HouseDef) {
         val have = Wardrobe.stars(this)
         val content = LinearLayout(this)
         content.orientation = LinearLayout.VERTICAL
-        content.setPadding(dp(16), dp(10), dp(16), dp(0))
-        content.addView(HouseCardView(this, def, false, false, 1), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(210)))
-        content.addView(label(def.about, 15f, Color.parseColor("#2B2540"), false))
-        content.addView(
-            label(
-                "لفتحه تحتاج ${def.starCost} نجمة، وعندك $have.\nتُجمع النجوم برعاية الأشباح ومن البوابة السحرية.",
-                14f, Color.parseColor("#5C5675"), false
-            )
-        )
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(def.name)
-            .setView(content)
-            .setPositiveButton("افتحه بـ ${def.starCost} نجمة", null)
-            .setNegativeButton("إغلاق", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                if (HomeStore.unlock(this, def.id)) {
-                    dialog.dismiss()
-                    Toast.makeText(this, "فُتح ${def.name}! صار متاحًا دائمًا", Toast.LENGTH_LONG).show()
-                    showList()
-                } else {
-                    Toast.makeText(this, "تحتاج ${def.starCost} نجمة وعندك ${Wardrobe.stars(this)}", Toast.LENGTH_LONG).show()
-                }
+        content.gravity = Gravity.CENTER_HORIZONTAL
+        content.setPadding(dp(16), dp(10), dp(16), dp(10))
+        content.addView(HouseCardView(this, def, false, false, 1), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(200)))
+        content.addView(MeterView(this, 0, have, def.starCost), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)))
+        val buttons = LinearLayout(this)
+        buttons.gravity = Gravity.CENTER
+        val dialog = AlertDialog.Builder(this).setView(content).create()
+        val check = icon(IconButtonView.CHECK, green, 74) {
+            if (HomeStore.unlock(this, def.id)) {
+                dialog.dismiss()
+                Toast.makeText(this, "فُتح ${def.name}!", Toast.LENGTH_LONG).show()
+                showList()
+            } else {
+                Toast.makeText(this, "ينقصك ${def.starCost - Wardrobe.stars(this)} نجمة", Toast.LENGTH_LONG).show()
             }
         }
+        check.dimmed = have < def.starCost
+        buttons.addView(check)
+        buttons.addView(icon(IconButtonView.CLOSE, red, 74) { dialog.dismiss() })
+        content.addView(buttons)
         dialog.show()
     }
 
     // =====================================================================
-    // Inside the house: the sleeping ghosts
+    // Inside the house: the sleeping ghosts and the big picture buttons
     // =====================================================================
+
+    private fun canUpgrade(id: Int): Boolean {
+        val level = HomeStore.level(this, id)
+        if (level >= HouseUpgrades.MAX_LEVEL) return false
+        val cost = HouseUpgrades.cost(level)
+        return Wardrobe.stars(this) >= cost.first && HomeStore.materials(this) >= cost.second
+    }
 
     private fun showInterior(id: Int, celebrate: Boolean = false) {
         inInterior = true
@@ -218,26 +225,32 @@ class HouseActivity : Activity() {
         val bar = LinearLayout(this)
         bar.orientation = LinearLayout.HORIZONTAL
         bar.gravity = Gravity.CENTER_VERTICAL
-        bar.setPadding(dp(12), dp(30), dp(12), dp(8))
-        val title = label("${def.name}  •  المستوى $level", 16f, Color.WHITE, true)
+        bar.setPadding(dp(12), dp(28), dp(12), dp(8))
+        bar.addView(icon(IconButtonView.BACK, purple, 54) { finish() })
+        val title = label("${def.name}  •  $level", 16f, Color.WHITE, true)
         title.background = pill(Color.parseColor("#997C5CFF"))
         title.setPadding(dp(14), dp(8), dp(14), dp(8))
-        bar.addView(button("المنازل", Color.parseColor("#CC7C5CFF")) { showList() })
         val tlp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         tlp.setMargins(dp(10), 0, 0, 0)
         bar.addView(title, tlp)
         root.addView(bar, FrameLayout.LayoutParams(match, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP))
 
+        // Five big picture buttons: decorate, upgrade, houses, village, playground
         val bottom = LinearLayout(this)
         bottom.orientation = LinearLayout.HORIZONTAL
         bottom.gravity = Gravity.CENTER
-        bottom.setPadding(dp(16), dp(8), dp(16), dp(22))
-        val shopBtn = button("زيّن منزلك", Color.parseColor("#E5469A")) { openShop() }
-        bottom.addView(shopBtn, LinearLayout.LayoutParams(dp(165), dp(54)))
-        val upBtn = button("ترقية المنزل", Color.parseColor("#7C5CFF")) { showUpgradeDialog() }
-        val ulp = LinearLayout.LayoutParams(dp(165), dp(54))
-        ulp.leftMargin = dp(10)
-        bottom.addView(upBtn, ulp)
+        bottom.setPadding(dp(6), dp(8), dp(6), dp(18))
+        bottom.addView(icon(IconButtonView.SHOP, Color.parseColor("#E5469A"), 62) { openShop() })
+        val up = icon(IconButtonView.UPGRADE, purple, 62) { showUpgradeDialog() }
+        up.badge = canUpgrade(id)
+        bottom.addView(up)
+        bottom.addView(icon(IconButtonView.HOUSES, Color.parseColor("#3D8BFD"), 62) { showList() })
+        bottom.addView(icon(IconButtonView.VILLAGE, Color.parseColor("#3DAE5C"), 62) {
+            startActivity(Intent(this, VillageActivity::class.java))
+        })
+        bottom.addView(icon(IconButtonView.PLAY, Color.parseColor("#FF8A2B"), 62) {
+            startActivity(Intent(this, PlaygroundActivity::class.java))
+        })
         root.addView(bottom, FrameLayout.LayoutParams(match, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
         bottomBar = bottom
 
@@ -292,19 +305,15 @@ class HouseActivity : Activity() {
     }
 
     // =====================================================================
-    // "Decorate your house": categories, items, preview, buy, place
+    // Upgrading the house: pictures, meters and a big green tick
     // =====================================================================
 
-    // =====================================================================
-    // Upgrading the house: levels 1 to 5, each one changes how it looks
-    // =====================================================================
-
-    private fun artColumn(title: String, level: Int): LinearLayout {
+    private fun artColumn(level: Int): LinearLayout {
         val col = LinearLayout(this)
         col.orientation = LinearLayout.VERTICAL
         col.gravity = Gravity.CENTER
-        col.addView(HouseArtView(this, houseId, level), LinearLayout.LayoutParams(dp(120), dp(130)))
-        col.addView(label(title, 14f, Color.parseColor("#2B2540"), true))
+        col.addView(HouseArtView(this, houseId, level), LinearLayout.LayoutParams(dp(125), dp(135)))
+        col.addView(label("$level", 18f, Color.parseColor("#2B2540"), true))
         return col
     }
 
@@ -313,47 +322,53 @@ class HouseActivity : Activity() {
         val level = HomeStore.level(this, id)
         val content = LinearLayout(this)
         content.orientation = LinearLayout.VERTICAL
-        content.setPadding(dp(16), dp(10), dp(16), 0)
+        content.gravity = Gravity.CENTER_HORIZONTAL
+        content.setPadding(dp(16), dp(10), dp(16), dp(10))
         val previews = LinearLayout(this)
         previews.orientation = LinearLayout.HORIZONTAL
         previews.gravity = Gravity.CENTER
-        previews.addView(artColumn("الحالي: المستوى $level", level))
+        previews.addView(artColumn(level))
         if (level < HouseUpgrades.MAX_LEVEL) {
-            previews.addView(label("  ←  ", 22f, Color.parseColor("#7C5CFF"), true))
-            previews.addView(artColumn("القادم: المستوى ${level + 1}", level + 1))
+            previews.addView(label("  ←  ", 26f, purple, true))
+            previews.addView(artColumn(level + 1))
         }
         content.addView(previews)
+        val dialog = AlertDialog.Builder(this).setView(content).create()
+        val buttons = LinearLayout(this)
+        buttons.gravity = Gravity.CENTER
 
-        val builder = AlertDialog.Builder(this).setTitle(HouseDefs.get(id).name).setView(content)
-            .setNegativeButton("إغلاق", null)
         if (level >= HouseUpgrades.MAX_LEVEL) {
-            content.addView(label("منزلك في أعلى مستوى، وفيه كل التفاصيل!", 15f, Color.parseColor("#2B2540"), false))
-            builder.show()
+            content.addView(label("منزلك في أعلى مستوى!", 17f, Color.parseColor("#2B2540"), true))
+            buttons.addView(icon(IconButtonView.CLOSE, red, 74) { dialog.dismiss() })
+            content.addView(buttons)
+            dialog.show()
             return
         }
         val cost = HouseUpgrades.cost(level)
-        content.addView(label("المستوى ${level + 1} يضيف: ${HouseUpgrades.adds(level + 1)}", 15f, Color.parseColor("#2B2540"), false))
-        content.addView(
-            label(
-                "التكلفة: ${cost.first} نجمة (عندك ${Wardrobe.stars(this)}) و${cost.second} مادة (عندك ${HomeStore.materials(this)}).\nأثاثك كله يبقى كما هو.",
-                14f, Color.parseColor("#5C5675"), false
-            )
-        )
-        val dialog = builder.setPositiveButton("رقِّ المنزل", null).create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                if (Wardrobe.stars(this) < cost.first || HomeStore.materials(this) < cost.second) {
-                    Toast.makeText(this, "تحتاج ${cost.first} نجمة و${cost.second} مادة", Toast.LENGTH_LONG).show()
-                } else if (Wardrobe.spendStars(this, cost.first) && HomeStore.spendMaterials(this, cost.second)) {
-                    HomeStore.setLevel(this, id, level + 1)
-                    dialog.dismiss()
-                    Toast.makeText(this, "ارتقى المنزل إلى المستوى ${level + 1}!", Toast.LENGTH_LONG).show()
-                    showInterior(id, true)
-                }
+        val stars = Wardrobe.stars(this)
+        val materials = HomeStore.materials(this)
+        content.addView(label(HouseUpgrades.adds(level + 1), 14f, Color.parseColor("#5C5675"), false))
+        content.addView(MeterView(this, 0, stars, cost.first), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42)))
+        content.addView(MeterView(this, 1, materials, cost.second), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42)))
+        val check = icon(IconButtonView.CHECK, green, 74) {
+            if (stars < cost.first || materials < cost.second) {
+                Toast.makeText(this, "ينقصك نجوم أو مواد", Toast.LENGTH_LONG).show()
+            } else if (Wardrobe.spendStars(this, cost.first) && HomeStore.spendMaterials(this, cost.second)) {
+                HomeStore.setLevel(this, id, level + 1)
+                dialog.dismiss()
+                showInterior(id, true)
             }
         }
+        check.dimmed = stars < cost.first || materials < cost.second
+        buttons.addView(check)
+        buttons.addView(icon(IconButtonView.CLOSE, red, 74) { dialog.dismiss() })
+        content.addView(buttons)
         dialog.show()
     }
+
+    // =====================================================================
+    // "Decorate your house": picture tabs, big picture cards, one big tick
+    // =====================================================================
 
     private fun openShop() {
         if (panel != null) return
@@ -361,55 +376,46 @@ class HouseActivity : Activity() {
         val p = LinearLayout(this)
         p.orientation = LinearLayout.VERTICAL
         p.background = pill(Color.parseColor("#F8F5FF"), 24)
-        p.setPadding(dp(10), dp(10), dp(10), dp(14))
+        p.setPadding(dp(8), dp(8), dp(8), dp(12))
 
-        val head = LinearLayout(this)
-        head.orientation = LinearLayout.HORIZONTAL
-        head.gravity = Gravity.CENTER_VERTICAL
-        head.addView(label("زيّن منزلك   •   النجوم: ${Wardrobe.stars(this)}", 16f, Color.parseColor("#2B2540"), true),
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        head.addView(button("إغلاق", Color.parseColor("#9A8FC0")) { closeShop() }, LinearLayout.LayoutParams(dp(90), dp(44)))
-        p.addView(head)
-
+        // Picture tabs, the first button closes the shop
         val tabsScroll = HorizontalScrollView(this)
+        tabsScroll.isHorizontalScrollBarEnabled = false
         val tabs = LinearLayout(this)
         tabs.orientation = LinearLayout.HORIZONTAL
+        tabs.gravity = Gravity.CENTER_VERTICAL
+        tabs.addView(icon(IconButtonView.BACK, Color.parseColor("#9A8FC0"), 56) { closeShop() })
         for (cat in FCat.values()) {
-            val b = button(Furniture.catName(cat), if (cat == shopCat) Color.parseColor("#7C5CFF") else Color.parseColor("#B9A8F5")) {
+            tabs.addView(icon(IconButtonView.forCategory(cat), Color.parseColor("#B07CFF"), 56) {
                 shopCat = cat
                 refreshShop()
-            }
-            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(42))
-            lp.setMargins(dp(3), dp(6), dp(3), dp(4))
-            tabs.addView(b, lp)
+            })
         }
         tabsScroll.addView(tabs)
-        tabsScroll.tag = tabs
         p.addView(tabsScroll)
 
         val itemsScroll = HorizontalScrollView(this)
+        itemsScroll.isHorizontalScrollBarEnabled = false
         val row = LinearLayout(this)
         row.orientation = LinearLayout.HORIZONTAL
         itemsScroll.addView(row)
-        p.addView(itemsScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(134)))
+        p.addView(itemsScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(152)))
 
-        val info = label("اختر عنصرًا لمعاينته في الغرفة", 14f, Color.parseColor("#5C5675"), false)
+        val info = label("اختر صورة لتراها في الغرفة", 13f, Color.parseColor("#5C5675"), false)
         p.addView(info)
         val actions = LinearLayout(this)
-        actions.orientation = LinearLayout.HORIZONTAL
         actions.gravity = Gravity.CENTER
-        val apply = button("", Color.parseColor("#4FAE5A")) { }
-        val remove = button("إزالة من الغرفة", Color.parseColor("#E5484D")) { }
-        val alp = LinearLayout.LayoutParams(0, dp(48), 1f)
-        alp.setMargins(dp(4), dp(6), dp(4), 0)
-        actions.addView(apply, alp)
-        actions.addView(remove, LinearLayout.LayoutParams(0, dp(48), 1f).apply { setMargins(dp(4), dp(6), dp(4), 0) })
+        val check = icon(IconButtonView.CHECK, green, 66) { }
+        val remove = icon(IconButtonView.CLOSE, red, 66) { }
+        actions.addView(check)
+        actions.addView(remove)
         p.addView(actions)
 
         panel = p
+        tabsRow = tabs
         itemsRow = row
         infoText = info
-        applyBtn = apply
+        checkBtn = check
         removeBtn = remove
         root.addView(p, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
         refreshShop()
@@ -425,19 +431,25 @@ class HouseActivity : Activity() {
         bottomBar?.visibility = View.VISIBLE
     }
 
-    /** Redraws the category tabs, the item cards and the action buttons. */
+    /** Redraws the tabs and the item cards (what the child can use now comes first). */
     private fun refreshShop() {
-        val p = panel ?: return
-        val tabsScroll = p.getChildAt(1) as HorizontalScrollView
-        val tabs = tabsScroll.tag as LinearLayout
+        if (panel == null) return
+        val tabs = tabsRow ?: return
         val cats = FCat.values()
         for (i in cats.indices) {
-            (tabs.getChildAt(i) as Button).background =
-                pill(if (cats[i] == shopCat) Color.parseColor("#7C5CFF") else Color.parseColor("#B9A8F5"))
+            (tabs.getChildAt(i + 1) as IconButtonView).chosen = cats[i] == shopCat
         }
         val row = itemsRow ?: return
         row.removeAllViews()
-        for (item in Furniture.inCategory(shopCat)) {
+        val have = Wardrobe.stars(this)
+        val ordered = Furniture.inCategory(shopCat).sortedBy {
+            when {
+                FurnStore.isOwned(this, it) -> 0
+                it.stars <= have -> 1
+                else -> 2
+            }
+        }
+        for (item in ordered) {
             val card = FurnCardView(
                 this, item,
                 FurnStore.isOwned(this, item),
@@ -445,7 +457,7 @@ class HouseActivity : Activity() {
                 selected?.id == item.id
             )
             card.setOnClickListener { selectItem(item) }
-            val lp = LinearLayout.LayoutParams(dp(100), dp(128))
+            val lp = LinearLayout.LayoutParams(dp(112), dp(146))
             lp.setMargins(dp(4), dp(2), dp(4), dp(2))
             row.addView(card, lp)
         }
@@ -463,13 +475,13 @@ class HouseActivity : Activity() {
 
     private fun refreshAction() {
         val info = infoText ?: return
-        val apply = applyBtn ?: return
+        val check = checkBtn ?: return
         val remove = removeBtn ?: return
         val item = selected
-        apply.visibility = View.GONE
+        check.visibility = View.GONE
         remove.visibility = View.GONE
         if (item == null) {
-            info.text = "اختر عنصرًا لمعاينته في الغرفة"
+            info.text = "اختر صورة لتراها في الغرفة"
             return
         }
         val isPlaced = state.placed[item.slot] == item.id
@@ -477,27 +489,23 @@ class HouseActivity : Activity() {
         val have = Wardrobe.stars(this)
         when {
             isPlaced -> {
-                info.text = "${item.name}: موضوع في الغرفة"
-                if (Furniture.isRemovable(item.slot)) remove.visibility = View.VISIBLE
-                remove.setOnClickListener { removeItem(item) }
+                info.text = "${item.name}: في الغرفة"
+                if (Furniture.isRemovable(item.slot)) {
+                    remove.visibility = View.VISIBLE
+                    remove.setOnClickListener { removeItem(item) }
+                }
             }
             owned -> {
-                info.text = "${item.name}: عندك، ضعه في الغرفة"
-                apply.visibility = View.VISIBLE
-                apply.text = "ضعه في المنزل"
-                apply.setOnClickListener { placeItem(item) }
-            }
-            item.source == FSource.STARS -> {
-                info.text = "${item.name}: ${item.stars} نجمة (عندك $have)"
-                apply.visibility = View.VISIBLE
-                apply.text = "اشتره بـ ${item.stars} نجمة"
-                apply.setOnClickListener { buyItem(item) }
+                info.text = "${item.name}: ضعه في الغرفة"
+                check.visibility = View.VISIBLE
+                check.dimmed = false
+                check.setOnClickListener { placeItem(item) }
             }
             else -> {
-                info.text = "${item.name}: مكافأة إعلان اختياري تُضاف في المرحلة القادمة، أو اشتره بـ ${item.stars} نجمة (عندك $have)"
-                apply.visibility = View.VISIBLE
-                apply.text = "اشتره بـ ${item.stars} نجمة"
-                apply.setOnClickListener { buyItem(item) }
+                info.text = "${item.name}: ${item.stars} نجمة (عندك $have)"
+                check.visibility = View.VISIBLE
+                check.dimmed = have < item.stars
+                check.setOnClickListener { buyItem(item) }
             }
         }
     }
@@ -506,7 +514,7 @@ class HouseActivity : Activity() {
         if (FurnStore.buy(this, item)) {
             placeItem(item)
         } else {
-            Toast.makeText(this, "تحتاج ${item.stars} نجمة وعندك ${Wardrobe.stars(this)}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "ينقصك ${item.stars - Wardrobe.stars(this)} نجمة", Toast.LENGTH_LONG).show()
         }
     }
 
