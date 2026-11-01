@@ -295,7 +295,14 @@ class MeterView(context: Context, private val icon: Int, private val have: Int, 
         val w = width.toFloat()
         val ok = have >= need
         // The picture: a star, or two bricks for building materials
-        if (icon == 0) {
+        if (icon == 2) {
+            fill.color = Color.parseColor("#FFC93C")
+            canvas.drawCircle(h * 0.5f, h * 0.5f, h * 0.44f, fill)
+            fill.color = Color.parseColor("#E0A800")
+            canvas.drawCircle(h * 0.5f, h * 0.5f, h * 0.30f, fill)
+            fill.color = Color.parseColor("#FFE27A")
+            canvas.drawCircle(h * 0.5f, h * 0.5f, h * 0.22f, fill)
+        } else if (icon == 0) {
             path.reset()
             for (i in 0 until 10) {
                 val rad = if (i % 2 == 0) h * 0.46f else h * 0.2f
@@ -327,5 +334,33 @@ class MeterView(context: Context, private val icon: Int, private val have: Int, 
         rect.set(left, h * 0.3f, left + (right - left) * p, h * 0.7f)
         canvas.drawRoundRect(rect, h * 0.2f, h * 0.2f, fill)
         canvas.drawText("$have/$need", w - 34f * d, h * 0.68f, text)
+    }
+}
+
+/** A gold coin with the restaurant's money next to it. */
+class CoinCounterView(context: Context) : View(context) {
+    var value = 0
+        set(v) { field = v; invalidate() }
+    private val d = resources.displayMetrics.density
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = 20f * resources.displayMetrics.density
+        isFakeBoldText = true
+        textAlign = Paint.Align.LEFT
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val h = height.toFloat()
+        val w = width.toFloat()
+        fill.color = Color.parseColor("#99000000")
+        canvas.drawRoundRect(RectF(0f, 0f, w, h), h / 2f, h / 2f, fill)
+        fill.color = Color.parseColor("#FFC93C")
+        canvas.drawCircle(h * 0.5f, h * 0.5f, h * 0.36f, fill)
+        fill.color = Color.parseColor("#E0A800")
+        canvas.drawCircle(h * 0.5f, h * 0.5f, h * 0.24f, fill)
+        fill.color = Color.parseColor("#FFE27A")
+        canvas.drawCircle(h * 0.5f, h * 0.5f, h * 0.17f, fill)
+        canvas.drawText("$value", h * 0.98f, h * 0.5f + 7f * d, text)
     }
 }

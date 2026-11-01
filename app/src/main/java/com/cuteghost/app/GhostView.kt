@@ -1465,6 +1465,18 @@ class GhostView @JvmOverloads constructor(
                 c.drawCircle(41f, 15f, 1.6f, itemPaint)
                 c.drawCircle(59f, 15f, 1.6f, itemPaint)
             }
+            7 -> { // the cook's tall white hat
+                itemPaint.color = Color.WHITE
+                itemPaint.alpha = 255
+                c.drawCircle(38f, 6f, 8f, itemPaint)
+                c.drawCircle(50f, -2f, 10f, itemPaint)
+                c.drawCircle(62f, 6f, 8f, itemPaint)
+                rect.set(37f, 6f, 63f, 20f)
+                c.drawRoundRect(rect, 3f, 3f, itemPaint)
+                itemPaint.color = Color.parseColor("#D9D2E9")
+                rect.set(37f, 15f, 63f, 20f)
+                c.drawRoundRect(rect, 2f, 2f, itemPaint)
+            }
             4, 5, 6 -> { // night cap (blue, pink, with a star)
                 val capColor = when (outfitHat) {
                     4 -> Color.parseColor("#5B8DEF")
