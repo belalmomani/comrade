@@ -35,6 +35,9 @@ class IconButtonView(context: Context, private val kind: Int, private val color:
         const val CAT_WINDOWS = 12
         const val CAT_MAGIC = 13
         const val CAT_GHOST = 14
+        const val REST_TABLE = 15
+        const val REST_WAITER = 16
+        const val REST_FRUIT = 17
 
         fun forCategory(cat: FCat): Int = CAT_BED + cat.ordinal
     }
@@ -263,6 +266,42 @@ class IconButtonView(context: Context, private val kind: Int, private val color:
                 star(c, 20f, 22f, 11f, white)
                 star(c, 82f, 24f, 9f, white)
                 star(c, 80f, 78f, 11f, white)
+            }
+            REST_TABLE -> {
+                rr(c, 2f, 56f, 14f, 88f, 3f, Color.parseColor("#C97B4A"))
+                rr(c, 86f, 56f, 98f, 88f, 3f, Color.parseColor("#C97B4A"))
+                rr(c, 46f, 64f, 54f, 88f, 2f, Color.parseColor("#8B5E3C"))
+                rr(c, 30f, 84f, 70f, 91f, 3f, Color.parseColor("#8B5E3C"))
+                rr(c, 10f, 48f, 90f, 66f, 9f, Color.parseColor("#FFF1D6"))
+                rr(c, 10f, 48f, 90f, 55f, 5f, Color.parseColor("#E5484D"))
+                f(white)
+                c.drawCircle(50f, 40f, 9f, fill)
+                star(c, 50f, 39f, 5f, Color.parseColor("#FFC93C"))
+            }
+            REST_WAITER -> {
+                f(white)
+                c.drawCircle(50f, 36f, 22f, fill)
+                rr(c, 28f, 36f, 72f, 74f, 6f, white)
+                f(Color.parseColor("#2B2540"))
+                c.drawCircle(42f, 38f, 3.2f, fill)
+                c.drawCircle(58f, 38f, 3.2f, fill)
+                tri(c, 50f, 54f, 38f, 47f, 38f, 61f, Color.parseColor("#E5484D"))
+                tri(c, 50f, 54f, 62f, 47f, 62f, 61f, Color.parseColor("#E5484D"))
+                rr(c, 16f, 78f, 84f, 85f, 3f, Color.parseColor("#C9D1D9"))
+                rr(c, 44f, 64f, 56f, 78f, 2f, Color.parseColor("#E0A458"))
+            }
+            REST_FRUIT -> {
+                rr(c, 8f, 74f, 92f, 92f, 4f, Color.parseColor("#C97B4A"))
+                f(Color.parseColor("#E63946"))
+                c.drawCircle(28f, 60f, 17f, fill)
+                f(Color.parseColor("#4CAF50"))
+                c.drawCircle(35f, 42f, 5f, fill)
+                f(Color.parseColor("#FF9F1C"))
+                c.drawCircle(68f, 62f, 15f, fill)
+                line.color = Color.parseColor("#FFD93B")
+                line.strokeWidth = 9f
+                rect.set(30f, 6f, 84f, 56f)
+                c.drawArc(rect, 25f, 120f, false, line)
             }
             CAT_GHOST -> {
                 f(white)

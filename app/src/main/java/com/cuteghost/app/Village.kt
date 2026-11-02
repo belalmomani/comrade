@@ -14,6 +14,11 @@ object Village {
     private const val KEY_LAST_VISIT = "village_last_visit"
     const val MAX_LEVEL = 5
 
+    private const val KEY_REST = "restaurant_level"
+
+    /** 1 counter only, 2 dining tables, 3 a waiter, 4 a fruit and food stand with a bigger menu. */
+    const val REST_MAX = 4
+
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -56,6 +61,19 @@ object Village {
 
     /** Upgrading a village house from [level] costs this many coins. */
     fun upgradeCost(level: Int): Int = 15 * level
+
+    fun restaurantLevel(context: Context): Int = prefs(context).getInt(KEY_REST, 1).coerceIn(1, REST_MAX)
+
+    fun setRestaurantLevel(context: Context, level: Int) {
+        prefs(context).edit().putInt(KEY_REST, level.coerceIn(1, REST_MAX)).apply()
+    }
+
+    /** What it costs to move the restaurant from [level] to the next one (high on purpose). */
+    fun restaurantCost(level: Int): Int = when (level) {
+        1 -> 150
+        2 -> 400
+        else -> 800
+    }
 
     fun coins(context: Context): Int = prefs(context).getInt(KEY_COINS, 0)
 

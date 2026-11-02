@@ -23,6 +23,9 @@ class Customer(val tourist: Int, val villager: Int) {
     var food = 0
     var slot = 0
     var phase = 0f
+    var seat = -1
+    var assigned = false
+    var servedByWaiter = false
 
     companion object {
         const val WALK_IN = 0
@@ -30,6 +33,9 @@ class Customer(val tourist: Int, val villager: Int) {
         const val WAIT = 2
         const val PAY = 3
         const val LEAVE = 4
+        const val WALK_TABLE = 5
+        const val EAT = 6
+        const val WAIT_SERVE = 7
     }
 }
 
@@ -51,14 +57,28 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
 
         /** The restaurant takes the first slot; the villagers' houses follow. */
         fun restaurantX(d: Float): Float = (START_DP + SLOT_DP / 2f) * d
-        fun houseCenterX(index: Int, d: Float): Float = (START_DP + SLOT_DP * (index + 1) + SLOT_DP / 2f) * d
+        fun houseCenterX(index: Int, d: Float): Float = (START_DP + SLOT_DP * (index + 2) + SLOT_DP / 2f) * d
         fun houseScale(d: Float): Float = 1.25f * d
         fun queueX(slot: Int, d: Float): Float = restaurantX(d) + (82f + slot * 48f) * d
+
+        /** The two dining tables in front of the restaurant and the four seats beside them. */
+        fun tableX(i: Int, d: Float): Float = restaurantX(d) + (if (i == 0) -50f else 50f) * d
+        fun seatX(seat: Int, d: Float): Float = tableX(seat / 2, d) + (if (seat % 2 == 0) -40f else 40f) * d
+
+        /** The fruit and food stand uses the slot between the restaurant and the first house. */
+        fun standX(d: Float): Float = (START_DP + SLOT_DP * 1 + SLOT_DP / 2f) * d
     }
 
     val customers = ArrayList<Customer>()
     val fx = ArrayList<CoinFx>()
     var onTap: ((Float, Float) -> Unit)? = null
+
+    /** 1 counter only, 2 dining tables, 3 a waiter, 4 the fruit and food stand and a bigger menu. */
+    var restaurantLevel = 1
+
+    /** The waiter's place and the dish on his tray (-1 = nothing). */
+    var waiterX = 0f
+    var waiterCarry = -1
 
     private val d = resources.displayMetrics.density
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -175,6 +195,8 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
         }
 
         drawRestaurant(canvas, restaurantX(d), ground)
+        drawStand(canvas, ground)
+        drawTables(canvas, ground)
 
         if (villagers.isEmpty()) {
             val cx = minOf(w, resources.displayMetrics.widthPixels.toFloat()) * 0.64f
@@ -203,7 +225,20 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
         // Customers: tourist creatures are drawn here, and every customer shows what it wants
         for (c in customers) {
             if (c.tourist >= 0) drawTourist(canvas, c, ground + 56f * d)
-            if (c.state == Customer.ORDER || c.state == Customer.WAIT) drawOrder(canvas, c, ground + 56f * d - 92f * d)
+            if (c.state == Customer.ORDER || c.state == Customer.WAIT || c.state == Customer.WAIT_SERVE) {
+                drawOrder(canvas, c, ground + 56f * d - 92f * d)
+            }
+            if (c.state == Customer.EAT && c.seat >= 0) {
+                // The dish on the table while the customer eats
+                f(Color.WHITE)
+                canvas.drawOval(RectF(tableX(c.seat / 2, d) - 12f * d, ground + 30f * d, tableX(c.seat / 2, d) + 12f * d, ground + 42f * d), fill)
+                drawFoodIcon(canvas, c.food, tableX(c.seat / 2, d), ground + 34f * d, 1.0f * d)
+            }
+        }
+        if (waiterCarry >= 0) {
+            // The waiter's tray
+            rr(canvas, waiterX + 8f * d, ground + 56f * d - 40f * d, waiterX + 40f * d, ground + 56f * d - 34f * d, 3f * d, Color.parseColor("#C9D1D9"))
+            drawFoodIcon(canvas, waiterCarry, waiterX + 24f * d, ground + 56f * d - 47f * d, 1.0f * d)
         }
         for (coin in fx) drawCoinFx(canvas, coin)
     }
@@ -244,8 +279,65 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
         }
     }
 
+    /** Two round dining tables with red cloths and chairs (restaurant level 2 and up). */
+    private fun drawTables(c: Canvas, ground: Float) {
+        if (restaurantLevel < 2) return
+        for (i in 0 until 2) {
+            val tx = tableX(i, d)
+            val ty = ground + 44f * d
+            rr(c, tx - 48f * d, ty - 8f * d, tx - 38f * d, ty + 22f * d, 3f * d, Color.parseColor("#C97B4A"))
+            rr(c, tx + 38f * d, ty - 8f * d, tx + 48f * d, ty + 22f * d, 3f * d, Color.parseColor("#C97B4A"))
+            rr(c, tx - 3f * d, ty + 4f * d, tx + 3f * d, ty + 24f * d, 1.5f * d, Color.parseColor("#8B5E3C"))
+            f(Color.parseColor("#FFF1D6"))
+            c.drawOval(RectF(tx - 32f * d, ty - 12f * d, tx + 32f * d, ty + 8f * d), fill)
+            line.color = Color.parseColor("#E5484D")
+            line.strokeWidth = 2.5f * d
+            c.drawOval(RectF(tx - 26f * d, ty - 9f * d, tx + 26f * d, ty + 5f * d), line)
+        }
+    }
+
+    /** The fruit and food stand (level 4), or a signpost for the empty plot before that. */
+    private fun drawStand(c: Canvas, ground: Float) {
+        val sx = standX(d)
+        if (restaurantLevel < 4) {
+            rr(c, sx - 3f * d, ground - 40f * d, sx + 3f * d, ground, 1.5f * d, Color.parseColor("#8B5E3C"))
+            rr(c, sx - 36f * d, ground - 60f * d, sx + 36f * d, ground - 34f * d, 6f * d, Color.parseColor("#B98A5E"))
+            val old = text.color
+            text.color = Color.WHITE
+            text.textSize = 12f * d
+            c.drawText("بسطة قريبًا", sx, ground - 42f * d, text)
+            text.color = old
+            text.textSize = 14f * d
+            return
+        }
+        rr(c, sx - 52f * d, ground - 36f * d, sx + 52f * d, ground - 8f * d, 6f * d, Color.parseColor("#C97B4A"))
+        rr(c, sx - 52f * d, ground - 36f * d, sx + 52f * d, ground - 30f * d, 4f * d, Color.parseColor("#E0A458"))
+        rr(c, sx - 52f * d, ground - 96f * d, sx - 47f * d, ground - 8f * d, 2f * d, Color.parseColor("#8B5E3C"))
+        rr(c, sx + 47f * d, ground - 96f * d, sx + 52f * d, ground - 8f * d, 2f * d, Color.parseColor("#8B5E3C"))
+        val stripe = 104f * d / 5f
+        for (i in 0 until 5) {
+            val l = sx - 52f * d + i * stripe
+            f(if (i % 2 == 0) Color.parseColor("#2EAD4B") else Color.WHITE)
+            c.drawRect(l, ground - 96f * d, l + stripe, ground - 74f * d, fill)
+            c.drawCircle(l + stripe / 2f, ground - 74f * d, stripe / 2f, fill)
+        }
+        // Fruit on the counter
+        val colors = intArrayOf(Color.parseColor("#E63946"), Color.parseColor("#FF9F1C"), Color.parseColor("#FFD93B"), Color.parseColor("#4CAF50"), Color.parseColor("#E63946"))
+        for (i in 0 until 5) {
+            f(colors[i])
+            c.drawCircle(sx - 40f * d + i * 20f * d, ground - 42f * d, 8f * d, fill)
+        }
+        rr(c, sx - 38f * d, ground - 120f * d, sx + 38f * d, ground - 98f * d, 7f * d, Color.parseColor("#8B5E3C"))
+        val old = text.color
+        text.color = Color.WHITE
+        text.textSize = 12f * d
+        c.drawText("فواكه وأطعمة", sx, ground - 104f * d, text)
+        text.color = old
+        text.textSize = 14f * d
+    }
+
     private fun drawFoodIcon(c: Canvas, food: Int, cx: Float, cy: Float, s: Float) {
-        when (food % 4) {
+        when (food % 8) {
             0 -> { // apple
                 f(Color.parseColor("#E63946"))
                 c.drawCircle(cx, cy + 1f * s, 9f * s, fill)
@@ -265,6 +357,42 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
                 c.drawCircle(cx - 3f * s, cy - 3f * s, 1.6f * s, fill)
                 c.drawCircle(cx + 3f * s, cy + 1f * s, 1.6f * s, fill)
                 c.drawCircle(cx - 1f * s, cy + 4f * s, 1.6f * s, fill)
+            }
+            4 -> { // watermelon slice
+                f(Color.parseColor("#4CAF50"))
+                rect.set(cx - 11f * s, cy - 9f * s, cx + 11f * s, cy + 13f * s)
+                c.drawArc(rect, 0f, 180f, true, fill)
+                f(Color.parseColor("#E63946"))
+                rect.set(cx - 8.5f * s, cy - 9f * s, cx + 8.5f * s, cy + 9f * s)
+                c.drawArc(rect, 0f, 180f, true, fill)
+                f(Color.parseColor("#2B2540"))
+                c.drawCircle(cx - 3f * s, cy + 1f * s, 1.1f * s, fill)
+                c.drawCircle(cx + 3f * s, cy + 3f * s, 1.1f * s, fill)
+            }
+            5 -> { // orange
+                f(Color.parseColor("#FF9F1C"))
+                c.drawCircle(cx, cy + 1f * s, 9f * s, fill)
+                f(Color.parseColor("#4CAF50"))
+                c.drawCircle(cx + 4f * s, cy - 9f * s, 3f * s, fill)
+            }
+            6 -> { // sandwich
+                rr(c, cx - 10f * s, cy - 9f * s, cx + 10f * s, cy - 2f * s, 4f * s, Color.parseColor("#E0A458"))
+                rr(c, cx - 11f * s, cy - 2f * s, cx + 11f * s, cy + 1f * s, 1.5f * s, Color.parseColor("#6BCB77"))
+                rr(c, cx - 10f * s, cy + 1f * s, cx + 10f * s, cy + 5f * s, 1.5f * s, Color.parseColor("#C97B4A"))
+                rr(c, cx - 10f * s, cy + 5f * s, cx + 10f * s, cy + 10f * s, 3f * s, Color.parseColor("#E0A458"))
+            }
+            7 -> { // pizza slice
+                path.reset()
+                path.moveTo(cx - 10f * s, cy - 8f * s)
+                path.lineTo(cx + 10f * s, cy - 8f * s)
+                path.lineTo(cx, cy + 12f * s)
+                path.close()
+                f(Color.parseColor("#FFC857"))
+                c.drawPath(path, fill)
+                rr(c, cx - 11f * s, cy - 12f * s, cx + 11f * s, cy - 7f * s, 2.5f * s, Color.parseColor("#E0A458"))
+                f(Color.parseColor("#E63946"))
+                c.drawCircle(cx - 3f * s, cy - 2f * s, 2.2f * s, fill)
+                c.drawCircle(cx + 3f * s, cy + 2f * s, 2.2f * s, fill)
             }
             else -> { // ice cream
                 path.reset()
