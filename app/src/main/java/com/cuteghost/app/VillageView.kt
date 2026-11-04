@@ -220,10 +220,12 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
 
         drawBackdrop(canvas, w, h, ground)
 
-        drawRestaurant(canvas, restaurantX(d), ground)
-        drawStand(canvas, ground)
-        drawTables(canvas, ground)
-        drawFarm(canvas, ground)
+        withDepth(canvas, ground) {
+            drawRestaurant(canvas, restaurantX(d), ground)
+            drawStand(canvas, ground)
+            drawTables(canvas, ground)
+        }
+        withDepth(canvas, ground + 50f * d) { drawFarm(canvas, ground) }
 
         if (villagers.isEmpty()) {
             val cx = minOf(w, resources.displayMetrics.widthPixels.toFloat()) * 0.64f
@@ -236,6 +238,7 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
         val s = houseScale(d)
         for ((i, v) in villagers.withIndex()) {
             val cx = houseCenterX(i, d)
+            withDepth(canvas, ground) {
             // A soft shadow under the house
             f(Color.BLACK, 60)
             canvas.drawOval(RectF(cx - 58f * d, ground - 8f * d, cx + 74f * d, ground + 14f * d), fill)
@@ -250,10 +253,11 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
             rect.set(cx - half, ground + 78f * d, cx + half, ground + 104f * d)
             canvas.drawRoundRect(rect, 12f * d, 12f * d, fill)
             canvas.drawText(v.label, cx, ground + 97f * d, text)
+            }
         }
 
         // Customers: tourist creatures are drawn here, and every customer shows what it wants
-        for (c in customers) {
+        for (c in customers) withDepth(canvas, ground + 56f * d) {
             f(Color.BLACK, 55)
             canvas.drawOval(RectF(c.x - 20f * d, ground + 52f * d, c.x + 20f * d, ground + 61f * d), fill)
             if (c.tourist >= 0) drawTourist(canvas, c, ground + 56f * d)
@@ -268,12 +272,12 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
                 drawFoodIcon(canvas, c.food, tableX(c.seat / 2, d), ground + 34f * d, 1.0f * d)
             }
         }
-        if (waiterCarry >= 0) {
+        if (waiterCarry >= 0) withDepth(canvas, ground + 56f * d) {
             // The waiter's tray
             rr(canvas, waiterX + 8f * d, ground + 56f * d - 40f * d, waiterX + 40f * d, ground + 56f * d - 34f * d, 3f * d, Color.parseColor("#C9D1D9"))
             drawFoodIcon(canvas, waiterCarry, waiterX + 24f * d, ground + 56f * d - 47f * d, 1.0f * d)
         }
-        for (coin in fx) drawCoinFx(canvas, coin)
+        withDepth(canvas, ground + 56f * d) { for (coin in fx) drawCoinFx(canvas, coin) }
         drawLife(canvas, w, h, ground)
         drawForeground(canvas, w, h)
     }
@@ -591,187 +595,142 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
 
     /** Street lamps with resting birds, the traffic lights, the vehicles and the people crossing the street. */
     private fun drawLife(c: Canvas, w: Float, h: Float, ground: Float) {
-        var k = 1
-        while ((START_DP + SLOT_DP * k) * d < w) {
-            drawLamp(c, (START_DP + SLOT_DP * k) * d, ground + 114f * d, k)
-            k++
+        val vw = minOf(w, screenW())
+        val lampY = ground + 114f * d
+        withDepth(c, lampY) {
+            val sc = scaleAt(lampY)
+            val vpoint = vpx()
+            val left = vpoint - (vw / 2f + 60f * d) / sc
+            val right = vpoint + (vw / 2f + 60f * d) / sc
+            var k = maxOf(1, ((left / d - START_DP) / SLOT_DP).toInt())
+            while ((START_DP + SLOT_DP * k) * d < minOf(w, right)) {
+                drawLamp(c, (START_DP + SLOT_DP * k) * d, lampY, k)
+                k++
+            }
+            drawTrafficLight(c, crossX() - 40f * d, lampY)
+            drawTrafficLight(c, crossX() + 40f * d, lampY)
         }
-        drawTrafficLight(c, crossX() - 40f * d, ground + 114f * d)
-        drawTrafficLight(c, crossX() + 40f * d, ground + 114f * d)
         for (lane in 0..1) {
-            for (v in vehicles) if (v.lane == lane) drawVehicle(c, v, ground + (if (lane == 0) 134f else 158f) * d)
+            for (v in vehicles) {
+                if (v.lane != lane) continue
+                val laneY = ground + (if (lane == 0) 134f else 158f) * d
+                withDepth(c, laneY) { drawVehicle(c, v, laneY) }
+            }
         }
         for (wk in walkers) {
-            c.save()
-            c.translate(wk.x, wk.y)
-            c.scale(0.55f, 0.55f)
-            wk.cu.x = 0f
-            drawTourist(c, wk.cu, 0f)
-            c.restore()
-        }
-    }
-
-
-    // ---------------------------------------------------------------- the farm
-
-    /** A small picture of a crop: carrot, tomato, strawberry or sunflower. */
-    private fun drawCropIcon(c: Canvas, crop: Int, cx: Float, cy: Float, s: Float) {
-        when (crop % 4) {
-            0 -> {
-                path.reset(); path.moveTo(cx - 6f * s, cy - 6f * s); path.lineTo(cx + 6f * s, cy - 6f * s); path.lineTo(cx, cy + 12f * s); path.close()
-                f(Color.parseColor("#FF8A2B")); c.drawPath(path, fill)
-                f(Color.parseColor("#4CAF50"))
-                c.drawCircle(cx - 3f * s, cy - 9f * s, 3.2f * s, fill)
-                c.drawCircle(cx + 3f * s, cy - 10f * s, 3.2f * s, fill)
-            }
-            1 -> {
-                f(Color.parseColor("#E63946")); c.drawCircle(cx, cy, 8f * s, fill)
-                f(Color.parseColor("#4CAF50")); c.drawCircle(cx, cy - 8f * s, 3f * s, fill)
-            }
-            2 -> {
-                path.reset(); path.moveTo(cx - 8f * s, cy - 5f * s); path.lineTo(cx + 8f * s, cy - 5f * s); path.lineTo(cx, cy + 10f * s); path.close()
-                f(Color.parseColor("#E63946")); c.drawPath(path, fill)
-                f(Color.parseColor("#4CAF50")); c.drawCircle(cx, cy - 6f * s, 4f * s, fill)
-                f(Color.parseColor("#FFF3B0"))
-                c.drawCircle(cx - 3f * s, cy, 1f * s, fill)
-                c.drawCircle(cx + 3f * s, cy + 1f * s, 1f * s, fill)
-                c.drawCircle(cx, cy + 5f * s, 1f * s, fill)
-            }
-            else -> {
-                f(Color.parseColor("#FFD93B"))
-                for (k in 0 until 8) {
-                    val a = k * 0.785f
-                    c.drawCircle(cx + kotlin.math.cos(a) * 7f * s, cy + sin(a) * 7f * s, 3.6f * s, fill)
-                }
-                f(Color.parseColor("#8B5E3C")); c.drawCircle(cx, cy, 5f * s, fill)
+            withDepth(c, wk.y) {
+                c.save()
+                c.translate(wk.x, wk.y)
+                c.scale(0.55f, 0.55f)
+                wk.cu.x = 0f
+                drawTourist(c, wk.cu, 0f)
+                c.restore()
             }
         }
     }
 
-    private fun drawPlant(c: Canvas, i: Int, st: PlotState, cx: Float, baseY: Float) {
-        val p = st.progress.coerceIn(0f, 1f)
-        val thirsty = st.thirsty
-        f(Color.parseColor("#7A5230"))
-        c.drawOval(RectF(cx - 12f * d, baseY - 4f * d, cx + 12f * d, baseY + 5f * d), fill)
-        if (p < 0.05f && !st.ripe) {
-            f(Color.parseColor("#C9A27A"))
-            c.drawCircle(cx, baseY - 3f * d, 2.6f * d, fill)
-            return
+    // ---------------------------------------------------------------- perspective
+
+    private fun screenW(): Float = resources.displayMetrics.widthPixels.toFloat()
+
+    /** The vanishing point: the middle of what the camera sees (it moves with the scrolling). */
+    fun vpx(): Float = camX + minOf(width.toFloat(), screenW()) / 2f
+
+    /**
+     * Depth scale of what stands at height [y] on the screen: far things (higher up) are smaller and
+     * near things (lower down) are bigger, and everything converges toward the vanishing point.
+     */
+    fun scaleAt(y: Float): Float {
+        val ground = height * GROUND
+        val k = (y - ground) / maxOf(1f, height - ground)
+        return (0.78f + 0.40f * k).coerceIn(0.5f, 1.3f)
+    }
+
+    fun projX(x: Float, y: Float): Float {
+        val s = scaleAt(y)
+        val v = vpx()
+        return v + (x - v) * s
+    }
+
+    /** Draws [body] (in the world's own coordinates) as an upright cut-out standing at depth [y]. */
+    private inline fun withDepth(c: Canvas, y: Float, body: () -> Unit) {
+        val s = scaleAt(y)
+        val v = vpx()
+        c.save()
+        c.translate(v * (1f - s), y * (1f - s))
+        c.scale(s, s)
+        body()
+        c.restore()
+    }
+
+    /** A pattern that repeats along the world, drawn at its own depth: [body] gets the visible world range. */
+    private inline fun depthPattern(c: Canvas, y: Float, body: (Float, Float) -> Unit) {
+        val s = scaleAt(y)
+        val v = vpx()
+        val half = (minOf(width.toFloat(), screenW()) / 2f + 60f * d) / s
+        withDepth(c, y) { body(v - half, v + half) }
+    }
+
+    /** Grass that darkens toward the viewer, the dirt path, the pavement, the street and the zebra crossing. */
+    private fun drawGround(c: Canvas, w: Float, h: Float, ground: Float) {
+        val vw = minOf(w, screenW())
+        val x0 = camX - 6f
+        val x1 = camX + vw + 6f
+        fill.style = Paint.Style.FILL
+        fill.alpha = 255
+        fill.shader = LinearGradient(0f, ground, 0f, h, Color.parseColor("#93DB8F"), Color.parseColor("#4A9A58"), Shader.TileMode.CLAMP)
+        c.drawRect(x0, ground, x1, h, fill)
+        fill.shader = LinearGradient(0f, ground + 16f * d, 0f, ground + 48f * d, Color.parseColor("#F5E6C0"), Color.parseColor("#D9BE8A"), Shader.TileMode.CLAMP)
+        c.drawRect(x0, ground + 16f * d, x1, ground + 48f * d, fill)
+        fill.shader = null
+        f(Color.parseColor("#D8D3E3"))
+        c.drawRect(x0, ground + 104f * d, x1, ground + 120f * d, fill)
+        f(Color.parseColor("#B2ACC4"))
+        c.drawRect(x0, ground + 118f * d, x1, ground + 122f * d, fill)
+        fill.shader = LinearGradient(0f, ground + 122f * d, 0f, ground + 172f * d, Color.parseColor("#6E7388"), Color.parseColor("#4E5268"), Shader.TileMode.CLAMP)
+        c.drawRect(x0, ground + 122f * d, x1, ground + 172f * d, fill)
+        fill.shader = null
+        f(Color.parseColor("#B2ACC4"))
+        c.drawRect(x0, ground + 172f * d, x1, ground + 178f * d, fill)
+
+        // What repeats along the ground is drawn at its own depth, so it converges and shifts with the camera
+        depthPattern(c, ground + 32f * d) { wx0, wx1 ->
+            var sr = ((wx0 / (52f * d)).toInt() - 1) * 52f * d
+            while (sr < wx1) {
+                f(Color.WHITE, 150)
+                rect.set(sr, ground + 31f * d, sr + 22f * d, ground + 33.5f * d)
+                c.drawRoundRect(rect, 1.5f * d, 1.5f * d, fill)
+                sr += 52f * d
+            }
         }
-        val sway = if (thirsty) 0f else sin(clock * 1.5f + i) * 2f * d
-        val droop = if (thirsty) 7f * d else 0f
-        val height = (8f + 42f * p) * d
-        val green = if (thirsty) Color.parseColor("#A8B58A") else Color.parseColor("#4CAF50")
-        val topX = cx + sway + droop
-        val topY = baseY - height + droop * 0.6f
-        line.color = green
-        line.strokeWidth = 3f * d
-        c.drawLine(cx, baseY, topX, topY, line)
-        val leaves = 1 + (p * 3f).toInt()
-        for (k in 0 until leaves) {
-            val t = 0.35f + 0.2f * k
-            val lx = cx + (topX - cx) * t
-            val ly = baseY - height * t + droop * 0.3f
-            f(green)
-            c.drawOval(RectF(lx - 11f * d, ly - 3f * d, lx - 1f * d, ly + 4f * d), fill)
-            c.drawOval(RectF(lx + 1f * d, ly - 7f * d, lx + 11f * d, ly), fill)
+        depthPattern(c, ground + 90f * d) { wx0, wx1 ->
+            var fx0 = ((wx0 / (53f * d)).toInt() - 1) * 53f * d
+            while (fx0 < wx1) {
+                val k = (fx0 / (53f * d)).toInt()
+                f(if (k % 2 == 0) Color.parseColor("#FF8FB8") else Color.parseColor("#FFE27A"))
+                c.drawCircle(fx0, ground + 70f * d + (((k % 3) + 3) % 3) * 22f * d, 3.2f * d, fill)
+                fx0 += 53f * d
+            }
         }
-        if (st.ripe) {
-            if (i % 4 == 0) drawCropIcon(c, 0, cx, baseY - 6f * d, 1.5f * d) else drawCropIcon(c, i, topX, topY - 3f * d, 1.6f * d)
-            line.color = Color.parseColor("#2EAD4B")
-            line.strokeWidth = 3f * d
-            line.alpha = (150f + 100f * sin(clock * 6f)).toInt().coerceIn(0, 255)
-            c.drawCircle(cx, baseY - 24f * d, 27f * d, line)
-            line.alpha = 255
-        } else if (thirsty) {
-            // a blue drop: "I am thirsty"
+        depthPattern(c, ground + 112f * d) { wx0, wx1 ->
+            f(Color.parseColor("#C6C0D6"))
+            var tileX = ((wx0 / (26f * d)).toInt() - 1) * 26f * d
+            while (tileX < wx1) {
+                c.drawRect(tileX, ground + 104f * d, tileX + 1.5f * d, ground + 118f * d, fill)
+                tileX += 26f * d
+            }
+        }
+        depthPattern(c, ground + 147f * d) { wx0, wx1 ->
+            f(Color.parseColor("#FFD93B"))
+            var dashX = ((wx0 / (52f * d)).toInt() - 1) * 52f * d + 10f * d
+            while (dashX < wx1) {
+                c.drawRect(dashX, ground + 146f * d, dashX + 24f * d, ground + 148.5f * d, fill)
+                dashX += 52f * d
+            }
             f(Color.WHITE, 235)
-            val by = topY - 30f * d
-            c.drawRoundRect(RectF(cx - 14f * d, by - 13f * d, cx + 14f * d, by + 13f * d), 10f * d, 10f * d, fill)
-            f(Color.parseColor("#3DA5F5"), (170f + 85f * sin(clock * 5f)).toInt().coerceIn(0, 255))
-            path.reset(); path.moveTo(cx, by - 9f * d); path.lineTo(cx - 6f * d, by + 1f * d); path.lineTo(cx + 6f * d, by + 1f * d); path.close()
-            c.drawPath(path, fill)
-            c.drawCircle(cx, by + 3f * d, 6f * d, fill)
-        }
-    }
-
-    /** The village farm: fence, sign, four plots with growing crops, and a scarecrow. */
-    private fun drawFarm(c: Canvas, ground: Float) {
-        val x0 = (START_DP + SLOT_DP * farmSlot) * d
-        // Fence at the back
-        for (k in 0..7) {
-            val px = x0 + 6f * d + k * 40f * d
-            rr(c, px - 2f * d, ground + 6f * d, px + 2f * d, ground + 32f * d, 1.5f * d, Color.parseColor("#B98A5E"))
-        }
-        rr(c, x0 + 4f * d, ground + 12f * d, x0 + 292f * d, ground + 17f * d, 2f * d, Color.parseColor("#C99A6B"))
-        rr(c, x0 + 4f * d, ground + 22f * d, x0 + 292f * d, ground + 27f * d, 2f * d, Color.parseColor("#C99A6B"))
-        // The sign
-        rr(c, x0 + 2f * d, ground - 30f * d, x0 + 6f * d, ground + 8f * d, 1.5f * d, Color.parseColor("#8B5E3C"))
-        rr(c, x0 - 10f * d, ground - 46f * d, x0 + 56f * d, ground - 24f * d, 7f * d, Color.parseColor("#6BA84F"))
-        val old = text.color
-        text.color = Color.WHITE
-        text.textSize = 12.5f * d
-        c.drawText("المزرعة", x0 + 23f * d, ground - 30f * d, text)
-        text.color = old
-        text.textSize = 14f * d
-        // The plots
-        for (i in 0 until Farm.PLOTS) {
-            val cx = plotCenterX(farmSlot, i, d)
-            rr(c, cx - 27f * d, ground + 40f * d, cx + 27f * d, ground + 88f * d, 9f * d, Color.parseColor("#8B5E3C"))
-            line.color = Color.parseColor("#6E4728")
-            line.strokeWidth = 2f * d
-            for (k in 0 until 3) c.drawLine(cx - 22f * d, ground + 52f * d + k * 13f * d, cx + 22f * d, ground + 52f * d + k * 13f * d, line)
-            val st = plots[i]
-            if (st == null || !st.planted) {
-                // "plant here": a bubble with the picture of the crop
-                f(Color.WHITE, 235)
-                val pulse = 1f + 0.06f * sin(clock * 4f + i)
-                c.drawRoundRect(RectF(cx - 17f * d * pulse, ground + 8f * d, cx + 17f * d * pulse, ground + 42f * d), 12f * d, 12f * d, fill)
-                drawCropIcon(c, i, cx, ground + 26f * d, 1.3f * d)
-            } else {
-                drawPlant(c, i, st, cx, ground + 70f * d)
-            }
-        }
-        // The scarecrow
-        val sx = x0 + 292f * d
-        line.color = Color.parseColor("#8B5E3C")
-        line.strokeWidth = 4f * d
-        c.drawLine(sx, ground + 4f * d, sx, ground + 74f * d, line)
-        c.drawLine(sx - 20f * d, ground + 30f * d, sx + 20f * d, ground + 30f * d + sin(clock * 1.2f) * 2f * d, line)
-        rr(c, sx - 11f * d, ground + 28f * d, sx + 11f * d, ground + 54f * d, 4f * d, Color.parseColor("#4F8FE0"))
-        f(Color.parseColor("#F2D2A9")); c.drawCircle(sx, ground + 20f * d, 9f * d, fill)
-        f(Color.parseColor("#E9C46A")); c.drawOval(RectF(sx - 15f * d, ground + 11f * d, sx + 15f * d, ground + 18f * d), fill)
-        c.drawRoundRect(RectF(sx - 8f * d, ground + 2f * d, sx + 8f * d, ground + 14f * d), 4f * d, 4f * d, fill)
-        // The farmer at work: seeds, the watering can or the basket
-        if (farmerAction != 0 && farmerTarget >= 0) {
-            val cx = plotCenterX(farmSlot, farmerTarget, d)
-            when (farmerAction) {
-                1 -> for (k in 0 until 6) {
-                    f(Color.parseColor("#7A5230"))
-                    c.drawCircle(cx + (k - 3) * 5f * d, ground + 20f * d + ((farmerT * 60f * d + k * 13f * d) % (40f * d)), 2.2f * d, fill)
-                }
-                2 -> {
-                    c.save()
-                    c.translate(cx - 26f * d, ground + 4f * d)
-                    c.rotate(-22f)
-                    rr(c, -14f * d, -8f * d, 10f * d, 8f * d, 3f * d, Color.parseColor("#6C8EAD"))
-                    line.color = Color.parseColor("#6C8EAD")
-                    line.strokeWidth = 3f * d
-                    c.drawLine(10f * d, -2f * d, 20f * d, 4f * d, line)
-                    c.restore()
-                    for (k in 0 until 9) {
-                        f(Color.parseColor("#66BFFF"))
-                        c.drawCircle(cx - 8f * d + (k * 7 % 20) * d, ground + 14f * d + ((farmerT * 70f * d + k * 11f * d) % (48f * d)), 2.4f * d, fill)
-                    }
-                }
-                else -> {
-                    rr(c, cx - 13f * d, ground + 18f * d, cx + 13f * d, ground + 36f * d, 4f * d, Color.parseColor("#C97B4A"))
-                    line.color = Color.parseColor("#A8622F")
-                    line.strokeWidth = 1.6f * d
-                    c.drawLine(cx - 13f * d, ground + 26f * d, cx + 13f * d, ground + 26f * d, line)
-                    f(Color.parseColor("#FFD93B"), (140f + 100f * sin(farmerT * 10f)).toInt().coerceIn(0, 255))
-                    c.drawCircle(cx, ground + 14f * d, 6f * d, fill)
-                }
+            for (z in 0 until 7) {
+                val zx = crossX() - 30f * d + z * 9.5f * d
+                c.drawRect(zx, ground + 124f * d, zx + 5.5f * d, ground + 170f * d, fill)
             }
         }
     }
@@ -909,59 +868,7 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
         fill.shader = null
         c.restore()
 
-        // The ground gets darker toward the viewer, with a road
-        fill.shader = LinearGradient(0f, ground, 0f, h, Color.parseColor("#93DB8F"), Color.parseColor("#4A9A58"), Shader.TileMode.CLAMP)
-        c.drawRect(0f, ground, w, h, fill)
-        fill.shader = LinearGradient(
-            0f, ground + 16f * d, 0f, ground + 48f * d,
-            Color.parseColor("#F5E6C0"), Color.parseColor("#D9BE8A"), Shader.TileMode.CLAMP
-        )
-        rect.set(0f, ground + 16f * d, w, ground + 48f * d)
-        c.drawRoundRect(rect, 14f * d, 14f * d, fill)
-        fill.shader = null
-        var sr = 8f * d
-        while (sr < w) {
-            f(Color.WHITE, 150)
-            rect.set(sr, ground + 31f * d, sr + 22f * d, ground + 33.5f * d)
-            c.drawRoundRect(rect, 1.5f * d, 1.5f * d, fill)
-            sr += 52f * d
-        }
-        var fx0 = 30f * d
-        var k = 0
-        while (fx0 < w) {
-            f(if (k % 2 == 0) Color.parseColor("#FF8FB8") else Color.parseColor("#FFE27A"))
-            c.drawCircle(fx0, ground + 70f * d + (k % 3) * 22f * d, 3.2f * d, fill)
-            fx0 += 53f * d
-            k++
-        }
-
-        // The pavement, the street with its two lanes, and a zebra crossing
-        f(Color.parseColor("#D8D3E3"))
-        c.drawRect(0f, ground + 104f * d, w, ground + 120f * d, fill)
-        f(Color.parseColor("#C6C0D6"))
-        var tileX = 0f
-        while (tileX < w) {
-            c.drawRect(tileX, ground + 104f * d, tileX + 1.5f * d, ground + 118f * d, fill)
-            tileX += 26f * d
-        }
-        f(Color.parseColor("#B2ACC4"))
-        c.drawRect(0f, ground + 118f * d, w, ground + 122f * d, fill)
-        fill.shader = LinearGradient(0f, ground + 122f * d, 0f, ground + 172f * d, Color.parseColor("#6E7388"), Color.parseColor("#4E5268"), Shader.TileMode.CLAMP)
-        c.drawRect(0f, ground + 122f * d, w, ground + 172f * d, fill)
-        fill.shader = null
-        f(Color.parseColor("#FFD93B"))
-        var dashX = 10f * d
-        while (dashX < w) {
-            c.drawRect(dashX, ground + 146f * d, dashX + 24f * d, ground + 148.5f * d, fill)
-            dashX += 52f * d
-        }
-        f(Color.parseColor("#B2ACC4"))
-        c.drawRect(0f, ground + 172f * d, w, ground + 178f * d, fill)
-        f(Color.WHITE, 235)
-        for (z in 0 until 7) {
-            val zx = crossX() - 30f * d + z * 9.5f * d
-            c.drawRect(zx, ground + 124f * d, zx + 5.5f * d, ground + 170f * d, fill)
-        }
+        drawGround(c, w, h, ground)
     }
 
     /** Bushes in front of everything (they move faster than the village), floating light and butterflies. */

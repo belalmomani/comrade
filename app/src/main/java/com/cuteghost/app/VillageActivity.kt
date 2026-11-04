@@ -243,6 +243,20 @@ class VillageActivity : Activity() {
 
     private fun freeSeat(): Int = (0 until 4).firstOrNull { s -> view.customers.none { it.seat == s } } ?: -1
 
+    /**
+     * Puts a ghost where the perspective camera shows it: [x] and [feetY] are world coordinates, [anchorY] is
+     * the depth it stands at. Far ghosts are smaller and everything converges toward the vanishing point.
+     */
+    private fun place(g: GhostView, x: Float, feetY: Float, anchorY: Float, gw: Float, gh: Float, bob: Float) {
+        val s = view.scaleAt(anchorY)
+        g.pivotX = gw / 2f
+        g.pivotY = gh
+        g.scaleX = s
+        g.scaleY = s
+        g.translationX = view.projX(x, anchorY) - gw / 2f
+        g.translationY = anchorY + (feetY - anchorY) * s - gh - bob * s
+    }
+
     private fun spawnCustomer() {
         // Only the people at the counter use the queue places; the others sit at the tables
         val used = view.customers
@@ -414,18 +428,15 @@ class VillageActivity : Activity() {
             val x = cu?.x ?: baseX(i)
             val walking = cu != null && (cu.state == Customer.WALK_IN || cu.state == Customer.LEAVE || cu.state == Customer.WALK_TABLE)
             val bob = if (walking) abs(sin(cu!!.phase * 9f)) * 3f * d else 0f
-            g.translationX = x - gw / 2f
-            g.translationY = ground + 50f * d - gh - bob
+            place(g, x, ground + 50f * d, ground + 50f * d, gw, gh, bob)
         }
         chef?.let {
-            it.translationX = VillageView.restaurantX(d) - 16f * d - gw / 2f
-            it.translationY = ground - 40f * d - gh + 8f * d
+            place(it, VillageView.restaurantX(d) - 16f * d, ground - 32f * d, ground, gw, gh, 0f)
         }
         waiter?.let {
             val moving = wState == W_TO_COUNTER || wState == W_CARRY || wState == W_BACK
             val bob = if (moving) abs(sin(wPhase * 9f)) * 3f * d else 0f
-            it.translationX = wX - gw / 2f
-            it.translationY = ground + 56f * d - gh - bob
+            place(it, wX, ground + 56f * d, ground, gw, gh, bob)
         }
         view.waiterX = wX
     }
@@ -596,8 +607,7 @@ class VillageActivity : Activity() {
         val gh = gw * 1.28f
         val moving = fState == F_WALK || fState == F_BACK
         val bob = if (moving) abs(sin(fPhase * 9f)) * 3f * d else 0f
-        fm.translationX = fX - gw / 2f
-        fm.translationY = ground + 100f * d - gh - bob
+        place(fm, fX, ground + 100f * d, ground + 50f * d, gw, gh, bob)
     }
 
     // ---------------------------------------------------------------- serving, touching a house or the restaurant
@@ -625,8 +635,12 @@ class VillageActivity : Activity() {
 
     private fun villagerGhost(cu: Customer): GhostView? = if (cu.villager >= 0) ghosts.getOrNull(cu.villager) else null
 
-    private fun handleTap(x: Float, y: Float) {
+    private fun handleTap(rawX: Float, rawY: Float) {
         val ground = view.height * VillageView.GROUND
+        // The picture is in perspective: a touch is turned back into the world's own coordinates
+        val depth = view.scaleAt(maxOf(rawY, ground))
+        val x = view.vpx() + (rawX - view.vpx()) / depth
+        val y = ground + (rawY - ground) / depth
         // A customer waiting for his dish: touching him gives it to him
         for (cu in view.customers) {
             if (cu.state == Customer.READY && abs(x - cu.x) < 40f * d && y in (ground + 56f * d - 118f * d)..(ground + 56f * d + 8f * d)) {
