@@ -179,4 +179,6 @@
     <string name="give_now">جرّب: أضف 20 نجمة و10 مواد</string>
     <string name="bath_now">جرّب: الاستحمام الآن</string>
     <string name="brush_now">جرّب: تنظيف الأسنان الآن</string>
+    <string name="mystery_egg_now">جرّب: بيضة عجيبة (توأمان) الآن</string>
+    <string name="ad_test_mode">وضع تجربة الإعلانات: إعلان وهمي لاختبار المكافآت (لا يوجد مزوّد إعلانات حقيقي)</string>
 </resources>

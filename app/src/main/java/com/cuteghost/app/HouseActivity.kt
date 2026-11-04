@@ -46,6 +46,7 @@ class HouseActivity : Activity() {
     private var infoText: TextView? = null
     private var checkBtn: IconButtonView? = null
     private var removeBtn: IconButtonView? = null
+    private var adBtn: IconButtonView? = null
     private var shopCat = FCat.BEDROOM
     private var selected: Furn? = null
 
@@ -350,6 +351,7 @@ class HouseActivity : Activity() {
         content.addView(label(HouseUpgrades.adds(level + 1), 14f, Color.parseColor("#5C5675"), false))
         content.addView(MeterView(this, 0, stars, cost.first), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42)))
         content.addView(MeterView(this, 1, materials, cost.second), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42)))
+        content.addView(label("للأهل: إعلان اختياري يعطي 5 مواد و3 نجوم", 12f, Color.parseColor("#5C5675"), false))
         val check = icon(IconButtonView.CHECK, green, 74) {
             if (stars < cost.first || materials < cost.second) {
                 Toast.makeText(this, "ينقصك نجوم أو مواد", Toast.LENGTH_LONG).show()
@@ -361,6 +363,15 @@ class HouseActivity : Activity() {
         }
         check.dimmed = stars < cost.first || materials < cost.second
         buttons.addView(check)
+        buttons.addView(icon(IconButtonView.REWARD_VIDEO, Color.parseColor("#FF6B9A"), 74) {
+            RewardedAds.watch(this, "5 مواد و3 نجوم") {
+                HomeStore.addMaterials(this, 5)
+                Wardrobe.addStars(this, 3)
+                dialog.dismiss()
+                Toast.makeText(this, "حصلتم على 5 مواد و3 نجوم", Toast.LENGTH_LONG).show()
+                showUpgradeDialog()
+            }
+        })
         buttons.addView(icon(IconButtonView.CLOSE, red, 74) { dialog.dismiss() })
         content.addView(buttons)
         dialog.show()
@@ -409,6 +420,11 @@ class HouseActivity : Activity() {
         val remove = icon(IconButtonView.CLOSE, red, 66) { }
         actions.addView(check)
         actions.addView(remove)
+        // For the grown-ups: an optional ad that gives the item (hidden for everything else)
+        val ad = icon(IconButtonView.REWARD_VIDEO, Color.parseColor("#FF6B9A"), 66) { }
+        ad.visibility = View.GONE
+        actions.addView(ad)
+        adBtn = ad
         p.addView(actions)
 
         panel = p
@@ -480,6 +496,7 @@ class HouseActivity : Activity() {
         val item = selected
         check.visibility = View.GONE
         remove.visibility = View.GONE
+        adBtn?.visibility = View.GONE
         if (item == null) {
             info.text = "اختر صورة لتراها في الغرفة"
             return
@@ -502,10 +519,22 @@ class HouseActivity : Activity() {
                 check.setOnClickListener { placeItem(item) }
             }
             else -> {
-                info.text = "${item.name}: ${item.stars} نجمة (عندك $have)"
+                info.text = "${item.name}: ${item.stars} نجمة (عندك $have)" +
+                    if (item.source == FSource.AD) " • أو إعلان اختياري للأهل" else ""
                 check.visibility = View.VISIBLE
                 check.dimmed = have < item.stars
                 check.setOnClickListener { buyItem(item) }
+                if (item.source == FSource.AD) {
+                    adBtn?.let { ab ->
+                        ab.visibility = View.VISIBLE
+                        ab.setOnClickListener {
+                            RewardedAds.watch(this, "${item.name} مجانًا") {
+                                FurnStore.own(this, item.id)
+                                placeItem(item)
+                            }
+                        }
+                    }
+                }
             }
         }
     }

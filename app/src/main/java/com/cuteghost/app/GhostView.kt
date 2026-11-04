@@ -1465,6 +1465,17 @@ class GhostView @JvmOverloads constructor(
                 c.drawCircle(41f, 15f, 1.6f, itemPaint)
                 c.drawCircle(59f, 15f, 1.6f, itemPaint)
             }
+            8 -> { // the farmer's straw hat
+                itemPaint.color = Color.parseColor("#E9C46A")
+                itemPaint.alpha = 255
+                rect.set(26f, 14f, 74f, 24f)
+                c.drawOval(rect, itemPaint)
+                rect.set(37f, 3f, 63f, 20f)
+                c.drawRoundRect(rect, 7f, 7f, itemPaint)
+                itemPaint.color = Color.parseColor("#E5484D")
+                rect.set(37f, 13f, 63f, 18f)
+                c.drawRect(rect, itemPaint)
+            }
             7 -> { // the cook's tall white hat
                 itemPaint.color = Color.WHITE
                 itemPaint.alpha = 255

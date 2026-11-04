@@ -34,6 +34,12 @@ class VillageActivity : Activity() {
         const val W_CARRY = 3
         const val W_SERVE = 4
         const val W_BACK = 5
+
+        // The farmer
+        const val F_IDLE = 0
+        const val F_WALK = 1
+        const val F_WORK = 2
+        const val F_BACK = 3
     }
 
     private lateinit var root: FrameLayout
@@ -56,6 +62,18 @@ class VillageActivity : Activity() {
     private var wX = 0f
     private var wTimer = 0f
     private var wPhase = 0f
+
+    private var farmer: GhostView? = null
+    private var scrollView: HorizontalScrollView? = null
+    private var farmSlot = 3
+    private val farmQueue = ArrayList<Int>()
+    private var fState = F_IDLE
+    private var fTarget = -1
+    private var fAction = 0
+    private var fX = 0f
+    private var fTimer = 0f
+    private var fPhase = 0f
+    private var plotRefresh = 0f
 
     private val green = Color.parseColor("#2EAD4B")
     private val red = Color.parseColor("#E5484D")
@@ -119,26 +137,35 @@ class VillageActivity : Activity() {
         rLevel = Village.restaurantLevel(this)
         val dm = resources.displayMetrics
         val match = FrameLayout.LayoutParams.MATCH_PARENT
-        val worldW = maxOf(dm.widthPixels, dp(VillageView.START_DP * 2 + VillageView.SLOT_DP * (villagers.size + 2)))
+        farmSlot = maxOf(3, villagers.size + 2)
+        val worldW = maxOf(dm.widthPixels, dp(VillageView.START_DP * 2 + VillageView.SLOT_DP * (farmSlot + 2)))
 
         view = VillageView(this, villagers)
         view.restaurantLevel = rLevel
+        view.farmSlot = farmSlot
         view.onTap = { x, y -> handleTap(x, y) }
         val scroll = HorizontalScrollView(this)
         scroll.isHorizontalScrollBarEnabled = false
+        scrollView = scroll
         val world = FrameLayout(this)
         world.addView(view, FrameLayout.LayoutParams(worldW, match))
         scroll.addView(world, FrameLayout.LayoutParams(worldW, match))
         root.addView(scroll, FrameLayout.LayoutParams(match, match))
+        // The camera: far layers of the picture move slower than near ones while scrolling
+        scroll.viewTreeObserver.addOnScrollChangedListener { view.camX = scroll.scrollX.toFloat() }
+        root.addView(CinemaOverlayView(this), FrameLayout.LayoutParams(match, match))
 
         // Every grown-up ghost stands in front of its house; the cook stands behind the counter
         val gw = dp(62)
         val gh = (gw * 1.28f).toInt()
-        for (v in villagers) {
+        for ((idx, v) in villagers.withIndex()) {
             val ghost = GhostView(this)
             ghost.setBodyColor(if (v.colorIndex >= 0) Family.color(v.colorIndex) else null)
             ghost.playful = true
-            ghost.setOnClickListener { ghost.showFed() }
+            ghost.setOnClickListener {
+                val cu = view.customers.firstOrNull { it.villager == idx }
+                if (cu != null && cu.state == Customer.READY) serve(cu) else ghost.showFed()
+            }
             world.addView(ghost, FrameLayout.LayoutParams(gw, gh, Gravity.TOP or Gravity.LEFT))
             ghosts.add(ghost)
         }
@@ -160,15 +187,37 @@ class VillageActivity : Activity() {
             wX = waiterHome()
         }
 
+        // The farmer, with a straw hat, works on the village farm
+        val farmerGhost = GhostView(this)
+        farmerGhost.setBodyColor(Family.color(2))
+        farmerGhost.setOutfit(8, 0, 0, 0, 0)
+        farmerGhost.playful = true
+        farmerGhost.setOnClickListener { farmerGhost.funnyMove(1) }
+        world.addView(farmerGhost, FrameLayout.LayoutParams(gw, gh, Gravity.TOP or Gravity.LEFT))
+        farmer = farmerGhost
+        farmQueue.clear()
+        fState = F_IDLE
+        fAction = 0
+        fX = VillageView.farmerHomeX(farmSlot, d)
+
         val bar = LinearLayout(this)
         bar.gravity = Gravity.CENTER_VERTICAL
         bar.setPadding(dp(12), dp(28), dp(12), dp(8))
         val back = IconButtonView(this, IconButtonView.BACK, Color.parseColor("#7C5CFF"))
         back.setOnClickListener { finish() }
         bar.addView(back, LinearLayout.LayoutParams(dp(56), dp(56)))
+        // Two picture buttons that scroll the village to the restaurant or to the farm
+        val toRest = IconButtonView(this, IconButtonView.VIL_REST, Color.parseColor("#E5469A"))
+        toRest.setOnClickListener { scrollView?.smoothScrollTo(0, 0) }
+        bar.addView(toRest, LinearLayout.LayoutParams(dp(48), dp(48)).apply { leftMargin = dp(6) })
+        val toFarm = IconButtonView(this, IconButtonView.VIL_FARM, Color.parseColor("#3DAE5C"))
+        toFarm.setOnClickListener {
+            scrollView?.smoothScrollTo(maxOf(0, ((VillageView.START_DP + VillageView.SLOT_DP * farmSlot - 40) * d).toInt()), 0)
+        }
+        bar.addView(toFarm, LinearLayout.LayoutParams(dp(48), dp(48)).apply { leftMargin = dp(6) })
         val title = TextView(this)
-        title.text = "القرية  •  ${villagers.size}"
-        title.textSize = 16f
+        title.text = "القرية"
+        title.textSize = 13f
         title.setTextColor(Color.WHITE)
         title.gravity = Gravity.CENTER
         title.background = GradientDrawable().apply { setColor(Color.parseColor("#997C5CFF")); cornerRadius = dp(22).toFloat() }
@@ -197,7 +246,10 @@ class VillageActivity : Activity() {
     private fun spawnCustomer() {
         // Only the people at the counter use the queue places; the others sit at the tables
         val used = view.customers
-            .filter { it.state == Customer.WALK_IN || it.state == Customer.ORDER || it.state == Customer.WAIT }
+            .filter {
+                it.state == Customer.WALK_IN || it.state == Customer.ORDER || it.state == Customer.WAIT ||
+                    (it.state == Customer.READY && (rLevel < 3 || it.seat < 0))
+            }
             .map { it.slot }.toSet()
         val slot = (0..2).firstOrNull { it !in used } ?: return
         val cu: Customer
@@ -228,6 +280,7 @@ class VillageActivity : Activity() {
         var price = FOOD_PRICE[cu.food % 8] * (if (cu.tourist >= 0) 2 else 1) // tourists pay double
         if (cu.servedByWaiter) price = (price * 3 + 1) / 2 // served at the table: a bigger tip
         else if (cu.seat >= 0 && rLevel == 2) price += 1 // sat at a table
+        if (cu.patience >= 14f) price = maxOf(1, price / 2) // late and angry: half price
         Village.addCoins(this, price)
         coinView.value = Village.coins(this)
         view.fx.add(CoinFx(cu.x, ground + 56f * d - 60f * d, price))
@@ -276,15 +329,23 @@ class VillageActivity : Activity() {
                     if (cu.timer <= 0f) afterOrder(cu)
                 }
                 Customer.WAIT -> {
+                    // The cook is cooking; then the dish is ready and waits for the child's touch
                     cu.timer -= dt
                     if (cu.timer <= 0f) {
-                        if (cu.seat >= 0) {
-                            cu.state = Customer.WALK_TABLE // level 2: takes the dish and sits at a table
-                        } else {
-                            pay(cu, ground)
-                            cu.state = Customer.PAY
-                            cu.timer = 0.9f
-                        }
+                        cu.state = Customer.READY
+                        cu.patience = 0f
+                    }
+                }
+                Customer.READY -> {
+                    cu.patience += dt
+                    if (cu.patience >= 14f && !cu.angryShown) {
+                        cu.angryShown = true
+                        villagerGhost(cu)?.funnyMove(0)
+                    }
+                    if (cu.patience >= 26f) {
+                        // Too late: the customer leaves angry without paying
+                        cu.state = Customer.LEAVE
+                        cu.seat = -1
                     }
                 }
                 Customer.WALK_TABLE -> {
@@ -292,8 +353,9 @@ class VillageActivity : Activity() {
                     cu.x = moveToward(cu.x, tx, speed, dt)
                     if (abs(cu.x - tx) < 2f) {
                         if (rLevel >= 3) {
-                            cu.state = Customer.WAIT_SERVE
-                            cu.timer = 25f
+                            // The cook cooked meanwhile: the dish waits for the child's touch
+                            cu.state = Customer.READY
+                            cu.patience = 0f
                         } else {
                             cu.state = Customer.EAT
                             cu.timer = 3f
@@ -337,6 +399,7 @@ class VillageActivity : Activity() {
             if (coin.age > 1.2f) fi.remove()
         }
         updateWaiter(dt)
+        updateFarm(dt, ground)
         // The cook stirs the pot from time to time while somebody waits
         if (t >= chefAt && view.customers.any { it.state == Customer.WAIT || it.state == Customer.ORDER || it.state == Customer.WAIT_SERVE }) {
             chefAt = t + 3.5f
@@ -432,10 +495,153 @@ class VillageActivity : Activity() {
         }
     }
 
-    // ---------------------------------------------------------------- touching a house or the restaurant
+    // ---------------------------------------------------------------- the farm
+
+    /** What the farmer would do at a plot now: 1 plant, 2 water, 3 harvest, 0 nothing (it is growing happily). */
+    private fun farmActionFor(i: Int): Int {
+        val st = Farm.state(this, i)
+        return when {
+            !st.planted -> 1
+            st.ripe -> 3
+            st.hydrated <= 0.5f -> 2
+            else -> 0
+        }
+    }
+
+    private fun farmTap(i: Int) {
+        if (farmActionFor(i) == 0) {
+            farmer?.funnyMove(1)
+            return
+        }
+        if (farmQueue.size < 3 && !farmQueue.contains(i) && !(fState != F_IDLE && fTarget == i)) farmQueue.add(i)
+    }
+
+    private fun addFarmCoins(amount: Int, x: Float, ground: Float) {
+        Village.addCoins(this, amount)
+        coinView.value = Village.coins(this)
+        view.fx.add(CoinFx(x, ground + 24f * d, amount))
+    }
+
+    private fun finishFarmWork(ground: Float) {
+        val i = fTarget
+        if (i < 0) return
+        val cx = VillageView.plotCenterX(farmSlot, i, d)
+        when (fAction) {
+            1 -> Farm.plant(this, i)
+            2 -> if (Farm.water(this, i)) addFarmCoins(1, cx, ground)
+            else -> {
+                val crop = Farm.harvest(this, i)
+                if (crop != null) {
+                    addFarmCoins(crop.coins, cx, ground)
+                    Wardrobe.addStars(this, crop.stars)
+                    farmer?.showFed()
+                    Toast.makeText(this, "حصاد ${crop.name}! +${crop.coins} عملة و+${crop.stars} نجمة", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        view.plots[i] = Farm.state(this, i)
+    }
+
+    private fun updateFarm(dt: Float, ground: Float) {
+        plotRefresh -= dt
+        if (plotRefresh <= 0f) {
+            plotRefresh = 1f
+            for (i in 0 until Farm.PLOTS) view.plots[i] = Farm.state(this, i)
+        }
+        val fm = farmer ?: return
+        fPhase += dt
+        val home = VillageView.farmerHomeX(farmSlot, d)
+        when (fState) {
+            F_IDLE -> {
+                if (farmQueue.isNotEmpty()) {
+                    val i = farmQueue.removeAt(0)
+                    val a = farmActionFor(i)
+                    if (a != 0) {
+                        fTarget = i
+                        fAction = a
+                        fState = F_WALK
+                    }
+                } else {
+                    fX = moveToward(fX, home, 70f, dt)
+                }
+            }
+            F_WALK -> {
+                val tx = VillageView.plotCenterX(farmSlot, fTarget, d)
+                fX = moveToward(fX, tx, 85f, dt)
+                if (abs(fX - tx) < 2f) {
+                    fState = F_WORK
+                    fTimer = if (fAction == 2) 1.7f else 1.3f
+                    view.farmerAction = fAction
+                    view.farmerTarget = fTarget
+                    view.farmerT = 0f
+                    fm.funnyMove(1)
+                }
+            }
+            F_WORK -> {
+                fTimer -= dt
+                view.farmerT += dt
+                if (fTimer <= 0f) {
+                    finishFarmWork(ground)
+                    view.farmerAction = 0
+                    fState = F_BACK
+                }
+            }
+            else -> {
+                fX = moveToward(fX, home, 85f, dt)
+                if (abs(fX - home) < 2f) fState = F_IDLE
+            }
+        }
+        view.farmerX = fX
+        val gw = dp(62).toFloat()
+        val gh = gw * 1.28f
+        val moving = fState == F_WALK || fState == F_BACK
+        val bob = if (moving) abs(sin(fPhase * 9f)) * 3f * d else 0f
+        fm.translationX = fX - gw / 2f
+        fm.translationY = ground + 100f * d - gh - bob
+    }
+
+    // ---------------------------------------------------------------- serving, touching a house or the restaurant
+
+    /** The child touched a customer whose dish is ready: the food is given (or the waiter takes it) and he pays. */
+    private fun serve(cu: Customer) {
+        if (cu.state != Customer.READY) return
+        val ground = view.height * VillageView.GROUND
+        villagerGhost(cu)?.showFed()
+        chef?.funnyMove(1)
+        when {
+            rLevel >= 3 && cu.seat >= 0 -> {
+                cu.state = Customer.WAIT_SERVE
+                cu.assigned = false
+                cu.timer = 25f
+            }
+            rLevel == 2 && cu.seat >= 0 -> cu.state = Customer.WALK_TABLE
+            else -> {
+                pay(cu, ground)
+                cu.state = Customer.PAY
+                cu.timer = 0.9f
+            }
+        }
+    }
+
+    private fun villagerGhost(cu: Customer): GhostView? = if (cu.villager >= 0) ghosts.getOrNull(cu.villager) else null
 
     private fun handleTap(x: Float, y: Float) {
         val ground = view.height * VillageView.GROUND
+        // A customer waiting for his dish: touching him gives it to him
+        for (cu in view.customers) {
+            if (cu.state == Customer.READY && abs(x - cu.x) < 40f * d && y in (ground + 56f * d - 118f * d)..(ground + 56f * d + 8f * d)) {
+                serve(cu)
+                return
+            }
+        }
+        // A plot: the farmer comes to plant, water or harvest
+        for (i in 0 until Farm.PLOTS) {
+            val pcx = VillageView.plotCenterX(farmSlot, i, d)
+            if (abs(x - pcx) < 34f * d && y in (ground + 4f * d)..(ground + 92f * d)) {
+                farmTap(i)
+                return
+            }
+        }
         if (abs(x - VillageView.restaurantX(d)) < 70f * d && y in (ground - 140f * d)..(ground + 10f * d)) {
             if (rLevel < Village.REST_MAX) showRestaurantUpgrade() else chef?.funnyMove(2)
             return

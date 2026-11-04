@@ -38,6 +38,16 @@ class IconButtonView(context: Context, private val kind: Int, private val color:
         const val REST_TABLE = 15
         const val REST_WAITER = 16
         const val REST_FRUIT = 17
+        const val MENU_HIDE = 18
+        const val MENU_WARDROBE = 19
+        const val W_HAT = 20
+        const val W_SCARF = 21
+        const val W_WINGS = 22
+        const val W_GLOW = 23
+        const val W_TRAIL = 24
+        const val REWARD_VIDEO = 25
+        const val VIL_FARM = 26
+        const val VIL_REST = 27
 
         fun forCategory(cat: FCat): Int = CAT_BED + cat.ordinal
     }
@@ -302,6 +312,109 @@ class IconButtonView(context: Context, private val kind: Int, private val color:
                 line.strokeWidth = 9f
                 rect.set(30f, 6f, 84f, 56f)
                 c.drawArc(rect, 25f, 120f, false, line)
+            }
+            MENU_HIDE -> {
+                f(white)
+                c.drawCircle(50f, 44f, 26f, fill)
+                rr(c, 24f, 44f, 76f, 82f, 4f, white)
+                line.color = Color.parseColor("#2B2540")
+                line.strokeWidth = 4f
+                rect.set(33f, 38f, 47f, 52f)
+                c.drawArc(rect, 20f, 140f, false, line)
+                rect.set(53f, 38f, 67f, 52f)
+                c.drawArc(rect, 20f, 140f, false, line)
+                line.color = Color.parseColor("#E5484D")
+                line.strokeWidth = 8f
+                c.drawLine(18f, 16f, 82f, 88f, line)
+            }
+            MENU_WARDROBE -> {
+                path.reset()
+                path.moveTo(16f, 74f)
+                path.lineTo(16f, 34f)
+                path.lineTo(34f, 52f)
+                path.lineTo(50f, 26f)
+                path.lineTo(66f, 52f)
+                path.lineTo(84f, 34f)
+                path.lineTo(84f, 74f)
+                path.close()
+                f(Color.parseColor("#FFC93C"))
+                c.drawPath(path, fill)
+                rr(c, 16f, 70f, 84f, 84f, 4f, Color.parseColor("#E0A800"))
+                f(Color.parseColor("#E5484D"))
+                c.drawCircle(50f, 72f, 5f, fill)
+                f(Color.parseColor("#4FC3F7"))
+                c.drawCircle(30f, 76f, 4f, fill)
+                c.drawCircle(70f, 76f, 4f, fill)
+            }
+            W_HAT -> {
+                tri(c, 50f, 10f, 22f, 76f, 78f, 76f, Color.parseColor("#FF8FB8"))
+                tri(c, 50f, 10f, 40f, 43f, 60f, 43f, white)
+                rr(c, 16f, 74f, 84f, 86f, 5f, Color.parseColor("#7C5CFF"))
+                f(Color.parseColor("#FFE27A"))
+                c.drawCircle(50f, 10f, 7f, fill)
+            }
+            W_SCARF -> {
+                rr(c, 16f, 34f, 84f, 56f, 9f, Color.parseColor("#E5484D"))
+                rr(c, 56f, 52f, 76f, 88f, 6f, Color.parseColor("#E5484D"))
+                line.color = white
+                line.strokeWidth = 4f
+                c.drawLine(30f, 36f, 30f, 54f, line)
+                c.drawLine(46f, 36f, 46f, 54f, line)
+                c.drawLine(66f, 62f, 66f, 84f, line)
+            }
+            W_WINGS -> {
+                f(white)
+                rect.set(4f, 28f, 50f, 78f)
+                c.drawOval(rect, fill)
+                rect.set(50f, 28f, 96f, 78f)
+                c.drawOval(rect, fill)
+                line.color = Color.parseColor("#C9D1F5")
+                line.strokeWidth = 3f
+                c.drawLine(14f, 66f, 44f, 40f, line)
+                c.drawLine(86f, 66f, 56f, 40f, line)
+            }
+            W_GLOW -> {
+                f(Color.parseColor("#33FFE27A"))
+                c.drawCircle(50f, 50f, 44f, fill)
+                f(Color.parseColor("#66FFE27A"))
+                c.drawCircle(50f, 50f, 31f, fill)
+                f(Color.parseColor("#FFE27A"))
+                c.drawCircle(50f, 50f, 18f, fill)
+            }
+            W_TRAIL -> {
+                star(c, 76f, 46f, 20f, Color.parseColor("#FFE27A"))
+                star(c, 44f, 56f, 13f, white)
+                star(c, 22f, 40f, 8f, white)
+                star(c, 26f, 72f, 7f, Color.parseColor("#FFE27A"))
+            }
+            REWARD_VIDEO -> {
+                rr(c, 12f, 20f, 88f, 66f, 9f, white)
+                tri(c, 42f, 30f, 42f, 56f, 66f, 43f, Color.parseColor("#FF6B9A"))
+                rr(c, 40f, 66f, 60f, 74f, 2f, white)
+                rr(c, 28f, 74f, 72f, 82f, 3f, white)
+                star(c, 84f, 18f, 12f, Color.parseColor("#FFE27A"))
+            }
+            VIL_FARM -> {
+                rr(c, 12f, 64f, 88f, 88f, 9f, Color.parseColor("#8B5E3C"))
+                line.color = Color.parseColor("#4CAF50")
+                line.strokeWidth = 5f
+                c.drawLine(50f, 66f, 50f, 36f, line)
+                f(Color.parseColor("#6BCB77"))
+                rect.set(26f, 26f, 52f, 44f)
+                c.drawOval(rect, fill)
+                rect.set(48f, 18f, 76f, 38f)
+                c.drawOval(rect, fill)
+                f(Color.parseColor("#FF8A2B"))
+                c.drawCircle(50f, 14f, 6f, fill)
+            }
+            VIL_REST -> {
+                f(white)
+                c.drawCircle(36f, 40f, 15f, fill)
+                c.drawCircle(50f, 30f, 17f, fill)
+                c.drawCircle(64f, 40f, 15f, fill)
+                rr(c, 34f, 42f, 66f, 66f, 3f, white)
+                rr(c, 34f, 60f, 66f, 70f, 2f, Color.parseColor("#D9D2E9"))
+                rr(c, 22f, 76f, 78f, 88f, 5f, Color.parseColor("#C9D1D9"))
             }
             CAT_GHOST -> {
                 f(white)

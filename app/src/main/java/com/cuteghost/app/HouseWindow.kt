@@ -21,7 +21,9 @@ class HouseWindow(
     private val wm: WindowManager,
     private val onTap: () -> Unit = {},
     /** Called with the new place after the house was dragged. */
-    private val onMoved: (Int, Int) -> Unit = { _, _ -> }
+    private val onMoved: (Int, Int) -> Unit = { _, _ -> },
+    /** Called every time the window moves (dragging, floating), so what is beside the house follows it. */
+    private val onPosition: (Int, Int) -> Unit = { _, _ -> }
 ) {
     companion object {
         const val WIDTH_DP = 96
@@ -146,6 +148,7 @@ class HouseWindow(
         val p = params ?: return
         try {
             wm.updateViewLayout(v, p)
+            onPosition(x, y)
         } catch (e: IllegalArgumentException) {
             Log.w("HouseWindow", "Could not move the house", e)
         }

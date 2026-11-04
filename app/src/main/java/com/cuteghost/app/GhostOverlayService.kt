@@ -64,6 +64,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         private const val KEY_LAST_EGG_DAY = "last_egg_day"
         private const val KEY_EGG_MYSTERY = "egg_mystery"
         private const val KEY_NEXT_BATH = "next_bath"
+        private const val KEY_LAST_MYSTERY = "last_mystery"
         private const val KEY_SEASON_DAY = "season_day"
         private const val KEY_ALIVE = "last_alive_at"
 
@@ -97,6 +98,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
 
         private const val ACTION_FEED_NOW = "com.companion.theghost.FEED_NOW"
         private const val ACTION_EGG_NOW = "com.companion.theghost.EGG_NOW"
+        private const val ACTION_MYSTERY_EGG_NOW = "com.companion.theghost.MYSTERY_EGG_NOW"
         private const val ACTION_BATH_NOW = "com.companion.theghost.BATH_NOW"
         private const val ACTION_BRUSH_NOW = "com.companion.theghost.BRUSH_NOW"
         private const val ACTION_MISCHIEF_NOW = "com.companion.theghost.MISCHIEF_NOW"
@@ -138,6 +140,14 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             startService(
                 context,
                 Intent(context, GhostOverlayService::class.java).setAction(ACTION_EGG_NOW)
+            )
+        }
+
+        /** Lays a mystery egg (twins) right now that hatches after 20 seconds (testing). */
+        fun mysteryEggNow(context: Context) {
+            startService(
+                context,
+                Intent(context, GhostOverlayService::class.java).setAction(ACTION_MYSTERY_EGG_NOW)
             )
         }
 
@@ -224,6 +234,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
     private val entering = HashSet<GhostWindow>()     // babies on their way back into the house
     private val dying = HashSet<GhostWindow>()
     private var house: HouseWindow? = null
+    private var houseMenu: HouseMenu? = null
     private var egg: EggWindow? = null
     private var notice: NoticeWindow? = null
     private var seasonWindow: SeasonWindow? = null
@@ -362,6 +373,8 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             if (m != null) {
                 beginSession(m, if (water) FeedView.Mode.WATER else FeedView.Mode.FOOD)
             }
+        } else if (action == ACTION_MYSTERY_EGG_NOW) {
+            layEgg(EGG_TEST_MS, true, true)
         } else if (action == ACTION_EGG_NOW) {
             layEgg(EGG_TEST_MS, true)
         } else if (action == ACTION_GROW_NOW) {
@@ -404,6 +417,8 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         egg = null
         mischiefWindow?.remove()
         mischiefWindow = null
+        houseMenu?.remove()
+        houseMenu = null
         house?.remove()
         house = null
         for (b in babies) b.remove()
@@ -999,17 +1014,26 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
     private fun showHouse() {
         if (house != null) return
         val wm = windowManager ?: return
-        val h = HouseWindow(this, wm, { openHouseScreen() }, { x, y -> onHouseMoved(x, y) })
+        val h = HouseWindow(
+            this, wm, { openHouseScreen() }, { x, y -> onHouseMoved(x, y) },
+            { x, y -> houseMenu?.moveTo(x, y) }
+        )
         // Where the child put the house last time, or next to the big ghost
         val sx = prefs().getInt("house_x", -1)
         val sy = prefs().getInt("house_y", -1)
         val dm = resources.displayMetrics
         if (sx >= 0 && sy >= 0 && sx + h.widthPx <= dm.widthPixels && sy + h.heightPx <= dm.heightPixels) {
-            if (h.show(sx, sy)) house = h
+            if (h.show(sx, sy)) {
+                house = h
+                showHouseMenu(h)
+            }
             return
         }
         val spot = houseSpot(h.widthPx, h.heightPx) ?: return
-        if (h.show(spot.x, spot.y)) house = h
+        if (h.show(spot.x, spot.y)) {
+            house = h
+            showHouseMenu(h)
+        }
     }
 
     /** The house stands on the side of the big ghost where there is room. */
@@ -1199,7 +1223,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         layEgg(EGG_INCUBATION_MS, false)
     }
 
-    private fun layEgg(durationMs: Long, test: Boolean) {
+    private fun layEgg(durationMs: Long, test: Boolean, forceMystery: Boolean = false) {
         if (egg != null || activeSession != null) return
         val m = mother ?: return
         if (m.userDragging || m in dying) return
@@ -1211,14 +1235,26 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             this, wm, babyTotal, System.currentTimeMillis(), durationMs,
             spot.x, spot.y, true, this
         )
-        // One egg in four is a mystery egg with twins inside (the test egg always is)
-        e.mystery = test || kotlin.random.Random.nextInt(4) == 0
+        // A mystery egg (twins) comes only once a week; every other egg is a normal one
+        val nowMs = System.currentTimeMillis()
+        var mystery = forceMystery
+        if (!test && !forceMystery) {
+            val last = prefs().getLong(KEY_LAST_MYSTERY, 0L)
+            if (last == 0L) {
+                prefs().edit().putLong(KEY_LAST_MYSTERY, nowMs).apply() // the first week brings normal eggs
+            } else if (nowMs - last >= 7L * 24L * 60L * 60L * 1000L) {
+                mystery = true
+            }
+        }
+        e.mystery = mystery
         if (!e.show()) return
         egg = e
         if (!test) {
             fedFlag = false
             waterFlag = false
-            prefs().edit().putInt(KEY_LAST_EGG_DAY, dayNumber()).apply()
+            val edit = prefs().edit().putInt(KEY_LAST_EGG_DAY, dayNumber())
+            if (mystery) edit.putLong(KEY_LAST_MYSTERY, nowMs)
+            edit.apply()
         }
         m.ghost.showFed() // the big ghost is happy after laying
         showCuriousAll(spot.x + e.widthPx / 2) // everybody looks at the new egg
@@ -1777,6 +1813,34 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         visitor = null
         for (p in pickups.toList()) p.removeNow()
         pickups.clear()
+    }
+
+    /** Three clear buttons beside the house: hide the ghost, the wardrobe and the village. */
+    private fun showHouseMenu(h: HouseWindow) {
+        if (houseMenu != null) return
+        val wm = windowManager ?: return
+        val menu = HouseMenu(this, wm, object : HouseMenu.Host {
+            override fun onHideGhosts() {
+                stopSelf()
+            }
+
+            override fun onWardrobeChanged() {
+                applyOutfitToAll()
+            }
+
+            override fun onOpenVillage() {
+                openVillageScreen()
+            }
+        })
+        if (menu.show(h.x, h.y, h.widthPx, h.heightPx)) houseMenu = menu
+    }
+
+    private fun openVillageScreen() {
+        try {
+            startActivity(Intent(this, VillageActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "Could not open the village", e)
+        }
     }
 
     /** Touching the floating house opens the house screen (the inside with the sleeping ghosts). */

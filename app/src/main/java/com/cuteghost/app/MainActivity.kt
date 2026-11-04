@@ -74,6 +74,11 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.neglectButton).setOnClickListener { testNeglect() }
         findViewById<Button>(R.id.seasonButton).setOnClickListener { testSeasonNow() }
         findViewById<Button>(R.id.peekButton).setOnClickListener { testSurprise(true) }
+        findViewById<android.widget.CheckBox>(R.id.adTestCheck).apply {
+            isChecked = RewardedAds.testMode(this@MainActivity)
+            setOnCheckedChangeListener { _, on -> RewardedAds.setTestMode(this@MainActivity, on) }
+        }
+        findViewById<Button>(R.id.mysteryEggButton).setOnClickListener { GhostOverlayService.mysteryEggNow(this) }
         findViewById<Button>(R.id.bathButton).setOnClickListener { GhostOverlayService.bathNow(this) }
         findViewById<Button>(R.id.brushButton).setOnClickListener { GhostOverlayService.brushNow(this) }
         findViewById<Button>(R.id.giveButton).setOnClickListener {
