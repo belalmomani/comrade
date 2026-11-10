@@ -80,6 +80,8 @@ class FeedView @JvmOverloads constructor(
 
     // Washing and brushing: how much was rubbed, the foam on the ghost, and the "touch here" hint
     private var scrub = 0f
+    private var soundT = 0f
+    private var fedHeard = false
     private var hintDone = false
     private var lastDragX = -1f
     private var lastDragY = -1f
@@ -163,6 +165,8 @@ class FeedView @JvmOverloads constructor(
         eatingNow = false
         finishTimer = -1f
         scrub = 0f
+        soundT = 0f
+        fedHeard = false
         hintDone = false
         lastDragX = -1f
         lastDragY = -1f
@@ -256,6 +260,21 @@ class FeedView @JvmOverloads constructor(
 
     private fun step(dt: Float) {
         clock += dt
+
+        // Sounds: chewing, gulping, scrubbing or brushing while it happens, and a sparkle when it is done
+        soundT -= dt
+        if (soundT <= 0f && eatingNow) {
+            when (mode) {
+                Mode.FOOD -> { Sounds.play(context, Snd.CHEW); soundT = 0.45f }
+                Mode.WATER -> { Sounds.play(context, Snd.GULP); soundT = 0.7f }
+                Mode.BATH -> { Sounds.play(context, Snd.SCRUB); soundT = 0.35f }
+                Mode.BRUSH -> { Sounds.play(context, Snd.BRUSH); soundT = 0.3f }
+            }
+        }
+        if (fed && !fedHeard) {
+            fedHeard = true
+            Sounds.play(context, if (mode == Mode.BATH) Snd.SPLASH else Snd.SPARKLE)
+        }
 
         for (f in foods) {
             if (f.appear < 1f) f.appear = min(1f, f.appear + dt / 0.35f)

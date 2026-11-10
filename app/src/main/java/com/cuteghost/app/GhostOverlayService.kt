@@ -1475,6 +1475,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
     }
 
     private fun enterBedtime() {
+        Sounds.play(this, Snd.LULLABY)
         val wm = windowManager ?: return
         val dm = resources.displayMetrics
         val r = RoomWindow(this, wm)

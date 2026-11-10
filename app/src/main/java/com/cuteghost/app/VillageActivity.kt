@@ -296,6 +296,7 @@ class VillageActivity : Activity() {
         else if (cu.seat >= 0 && rLevel == 2) price += 1 // sat at a table
         if (cu.patience >= 14f) price = maxOf(1, price / 2) // late and angry: half price
         Village.addCoins(this, price)
+        Sounds.play(this, Snd.CHING)
         coinView.value = Village.coins(this)
         view.fx.add(CoinFx(cu.x, ground + 56f * d - 60f * d, price))
     }
@@ -354,6 +355,7 @@ class VillageActivity : Activity() {
                     cu.patience += dt
                     if (cu.patience >= 14f && !cu.angryShown) {
                         cu.angryShown = true
+                        Sounds.play(this, Snd.GRUMBLE)
                         villagerGhost(cu)?.funnyMove(0)
                     }
                     if (cu.patience >= 26f) {
@@ -538,13 +540,20 @@ class VillageActivity : Activity() {
         if (i < 0) return
         val cx = VillageView.plotCenterX(farmSlot, i, d)
         when (fAction) {
-            1 -> Farm.plant(this, i)
-            2 -> if (Farm.water(this, i)) addFarmCoins(1, cx, ground)
+            1 -> {
+                Farm.plant(this, i)
+                Sounds.play(this, Snd.POP, true)
+            }
+            2 -> if (Farm.water(this, i)) {
+                addFarmCoins(1, cx, ground)
+                Sounds.play(this, Snd.SPLASH, true)
+            }
             else -> {
                 val crop = Farm.harvest(this, i)
                 if (crop != null) {
                     addFarmCoins(crop.coins, cx, ground)
                     Wardrobe.addStars(this, crop.stars)
+                    Sounds.play(this, Snd.SPARKLE, true)
                     farmer?.showFed()
                     Toast.makeText(this, "حصاد ${crop.name}! +${crop.coins} عملة و+${crop.stars} نجمة", Toast.LENGTH_SHORT).show()
                 }
@@ -641,6 +650,8 @@ class VillageActivity : Activity() {
         val depth = view.scaleAt(maxOf(rawY, ground))
         val x = view.vpx() + (rawX - view.vpx()) / depth
         val y = ground + (rawY - ground) / depth
+        // The patrol car and the officers answer a touch (siren, whistle, a wave)
+        if (view.tapPolice(x, y)) return
         // A customer waiting for his dish: touching him gives it to him
         for (cu in view.customers) {
             if (cu.state == Customer.READY && abs(x - cu.x) < 40f * d && y in (ground + 56f * d - 118f * d)..(ground + 56f * d + 8f * d)) {

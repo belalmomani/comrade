@@ -75,8 +75,14 @@ class HouseActivity : Activity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (inInterior) Sounds.startLullaby(this)
+    }
+
     override fun onPause() {
         super.onPause()
+        Sounds.stopLullaby()
         handler.removeCallbacksAndMessages(null)
         // The floating house on the screen takes the chosen look
         if (GhostOverlayService.isRunning) {
@@ -123,6 +129,7 @@ class HouseActivity : Activity() {
 
     private fun showList() {
         inInterior = false
+        Sounds.stopLullaby()
         panel = null
         handler.removeCallbacksAndMessages(null)
         root.removeAllViews()
@@ -256,6 +263,7 @@ class HouseActivity : Activity() {
         bottomBar = bottom
 
         if (celebrate) state.celebrateUntil = SystemClock.uptimeMillis() + 1_600L
+        Sounds.startLullaby(this) // a soft music-box lullaby while the little ones sleep
         root.post { placeGhosts(ghostLayer, level, 0) }
     }
 

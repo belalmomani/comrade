@@ -103,7 +103,10 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
     var farmerTarget = -1
     var farmerT = 0f
 
-    private class Vehicle(val lane: Int, val type: Int, val color: Int, val length: Float) {
+    private class Vehicle(var lane: Int, val type: Int, val color: Int, val length: Float) {
+        var police = false
+        var sirenT = 25f
+        var flash = 0f
         var x = 0f
         var speed = 0f
         var maxSpeed = 0f
@@ -132,6 +135,41 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
     private val planes = ArrayList<Plane>()
     private val flocks = ArrayList<Flock>()
     private val walkers = ArrayList<Walker>()
+
+    /** A bird: an eagle soaring in circles, darting swallows, doves, crows. */
+    private class Bird(val kind: Int, val dir: Float, val y0: Float, val speed: Float, val size: Float) {
+        var x = 0f
+        var y = y0
+        var life = 0f
+        var phase = Random.nextFloat() * 6.28f
+        var cx = 0f
+        var facing = dir
+        var flap = 0f
+    }
+
+    /** A plane, a helicopter or a hot-air balloon crossing the sky. */
+    private class Flyer(val kind: Int, val dir: Float, val y: Float, val speed: Float, val size: Float, val color: Int) {
+        var x = 0f
+        var life = 0f
+        var trailAcc = 0f
+        val trail = ArrayList<FloatArray>()
+    }
+
+    /** A police officer who stays in the village: one directs the traffic, one patrols the pavement. */
+    private class Officer(val kind: Int, val traffic: Boolean) {
+        var x = 0f
+        var dir = 1f
+        var target = 0f
+        var pause = 0f
+        var phase = 0f
+        var wave = 0f
+    }
+
+    private val birds = ArrayList<Bird>()
+    private val flyers = ArrayList<Flyer>()
+    private val officers = ArrayList<Officer>()
+    private var birdTimer = 2.0f
+    private var flyerTimer = 4.0f
     private var lifeStarted = false
     private var carTimer = 1.5f
     private var planeTimer = 2.5f
@@ -220,6 +258,7 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
 
         drawBackdrop(canvas, w, h, ground)
 
+        drawTreeRow(canvas, ground)
         withDepth(canvas, ground) {
             drawRestaurant(canvas, restaurantX(d), ground)
             drawStand(canvas, ground)
@@ -320,10 +359,16 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
         val vw = minOf(w, resources.displayMetrics.widthPixels.toFloat())
         lightT += dt
         val light = lightState()
+        stepSky(dt, h, vw)
+        stepPolice(dt, w)
+        // The sounds of the village: now and then a bird, now and then a horn
+        if (Random.nextFloat() < dt * 0.07f) Sounds.play(context, Snd.CHIRP)
+        if (vehicles.size > 2 && Random.nextFloat() < dt * 0.012f) Sounds.play(context, Snd.HONK)
 
         if (!lifeStarted) {
             lifeStarted = true
             for (i in 0 until 6) spawnVehicle(Random.nextFloat() * w, w)
+            spawnPolice(w)
         }
         carTimer -= dt
         if (carTimer <= 0f) {
@@ -331,6 +376,16 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
             carTimer = 2.2f + Random.nextFloat() * 3.5f
         }
         for (v in vehicles) {
+            if (v.police) {
+                // The patrol car turns around at the ends of its beat and never leaves the village
+                val beatEnd = minOf(w, 1000f * d) - 60f * d
+                if (v.lane == 1 && v.x > beatEnd) v.lane = 0 else if (v.lane == 0 && v.x < 60f * d) v.lane = 1
+                v.sirenT -= dt
+                if (v.sirenT <= 0f) {
+                    v.sirenT = 45f + Random.nextFloat() * 40f
+                    Sounds.play(context, Snd.SIREN)
+                }
+            }
             val dir = if (v.lane == 0) -1f else 1f
             var target = v.maxSpeed
             if (light != 0) {
@@ -361,7 +416,7 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
             v.x += dir * v.speed * dt
             v.wheel += v.speed * dt / (9f * d)
         }
-        vehicles.removeAll { it.x < -220f * d || it.x > w + 220f * d }
+        vehicles.removeAll { !it.police && (it.x < -220f * d || it.x > w + 220f * d) }
 
         // Two little ones cross the street at the zebra crossing while the cars wait at the red light
         val cycle = (lightT / 17.5f).toInt()
@@ -393,7 +448,7 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
 
         // Airplanes with white trails
         planeTimer -= dt
-        if (planeTimer <= 0f && planes.size < 2) {
+        if (planeTimer <= 0f && planes.size < 0) {
             val dir = if (Random.nextBoolean()) 1f else -1f
             val p = Plane(dir, h * (0.07f + Random.nextFloat() * 0.2f), (70f + Random.nextFloat() * 50f) * d)
             p.x = if (dir > 0f) -100f * d else vw + 100f * d
@@ -417,7 +472,7 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
 
         // Flocks of birds
         flockTimer -= dt
-        if (flockTimer <= 0f && flocks.size < 3) {
+        if (flockTimer <= 0f && flocks.size < 0) {
             val dir = if (Random.nextBoolean()) 1f else -1f
             val fl = Flock(dir, h * (0.12f + Random.nextFloat() * 0.3f), (45f + Random.nextFloat() * 40f) * d, 3 + Random.nextInt(5))
             fl.x = if (dir > 0f) -120f * d else vw + 120f * d
@@ -509,6 +564,32 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
         c.drawOval(RectF(-half * s, 10f * s, half * s, 17f * s), fill)
         val glass = Color.parseColor("#CFEFFF")
         when (v.type) {
+            4 -> { // police car with a flashing light bar and "police" on the door
+                rr(c, -40f * s, -4f * s, 40f * s, 12f * s, 6f * s, Color.WHITE)
+                rr(c, -40f * s, 2f * s, 40f * s, 8f * s, 0f, Color.parseColor("#2F5DA8"))
+                path.reset()
+                path.moveTo(-24f * s, -4f * s); path.lineTo(-15f * s, -18f * s); path.lineTo(15f * s, -18f * s); path.lineTo(26f * s, -4f * s); path.close()
+                f(Color.WHITE); c.drawPath(path, fill)
+                path.reset()
+                path.moveTo(-20f * s, -5f * s); path.lineTo(-13f * s, -16f * s); path.lineTo(13f * s, -16f * s); path.lineTo(22f * s, -5f * s); path.close()
+                f(glass); c.drawPath(path, fill)
+                val on = (clock * 5f).toInt() % 2 == 0
+                rr(c, -9f * s, -23f * s, 0f, -18f * s, 2f * s, if (on) Color.parseColor("#FF3B30") else Color.parseColor("#7A1A16"))
+                rr(c, 0f, -23f * s, 9f * s, -18f * s, 2f * s, if (on) Color.parseColor("#14307A") else Color.parseColor("#1F4FFF"))
+                f(if (on) Color.parseColor("#55FF3B30") else Color.parseColor("#551F4FFF"))
+                c.drawCircle((if (on) -5f else 5f) * s, -21f * s, 15f * s, fill)
+                wheel(c, -24f * s, 12f * s, 8f * s, v.wheel)
+                wheel(c, 24f * s, 12f * s, 8f * s, v.wheel)
+                c.save()
+                if (v.lane == 0) c.scale(-1f, 1f)
+                val oldColor = text.color
+                text.color = Color.WHITE
+                text.textSize = 6.4f * s
+                c.drawText("شرطة", 0f, 6.8f * s, text)
+                text.color = oldColor
+                text.textSize = 14f * d
+                c.restore()
+            }
             2 -> { // bus
                 rr(c, -64f * s, -18f * s, 64f * s, 12f * s, 8f * s, v.color)
                 rr(c, -64f * s, -18f * s, 64f * s, -13f * s, 4f * s, Color.WHITE)
@@ -610,6 +691,7 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
             drawTrafficLight(c, crossX() - 40f * d, lampY)
             drawTrafficLight(c, crossX() + 40f * d, lampY)
         }
+        for (o in officers) withDepth(c, ground + 112f * d) { drawOfficer(c, o, ground + 112f * d) }
         for (lane in 0..1) {
             for (v in vehicles) {
                 if (v.lane != lane) continue
@@ -668,33 +750,121 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
     private fun drawPlant(c: Canvas, i: Int, st: PlotState, cx: Float, baseY: Float) {
         val p = st.progress.coerceIn(0f, 1f)
         val thirsty = st.thirsty
+        val ripe = st.ripe
         f(Color.parseColor("#7A5230"))
-        c.drawOval(RectF(cx - 12f * d, baseY - 4f * d, cx + 12f * d, baseY + 5f * d), fill)
-        if (p < 0.05f && !st.ripe) {
+        c.drawOval(RectF(cx - 13f * d, baseY - 4f * d, cx + 13f * d, baseY + 5f * d), fill)
+        if (p < 0.05f && !ripe) {
             f(Color.parseColor("#C9A27A"))
-            c.drawCircle(cx, baseY - 3f * d, 2.6f * d, fill)
+            c.drawCircle(cx - 3f * d, baseY - 3f * d, 2.4f * d, fill)
+            c.drawCircle(cx + 3f * d, baseY - 2f * d, 2.4f * d, fill)
             return
         }
-        val sway = if (thirsty) 0f else sin(clock * 1.5f + i) * 2f * d
-        val droop = if (thirsty) 7f * d else 0f
-        val height = (8f + 42f * p) * d
-        val green = if (thirsty) Color.parseColor("#A8B58A") else Color.parseColor("#4CAF50")
-        val topX = cx + sway + droop
-        val topY = baseY - height + droop * 0.6f
-        line.color = green
-        line.strokeWidth = 3f * d
-        c.drawLine(cx, baseY, topX, topY, line)
-        val leaves = 1 + (p * 3f).toInt()
-        for (k in 0 until leaves) {
-            val t = 0.35f + 0.2f * k
-            val lx = cx + (topX - cx) * t
-            val ly = baseY - height * t + droop * 0.3f
-            f(green)
-            c.drawOval(RectF(lx - 11f * d, ly - 3f * d, lx - 1f * d, ly + 4f * d), fill)
-            c.drawOval(RectF(lx + 1f * d, ly - 7f * d, lx + 11f * d, ly), fill)
+        val leafDark = if (thirsty) Color.parseColor("#9FAF86") else Color.parseColor("#3E9A4B")
+        val leafLight = if (thirsty) Color.parseColor("#B9C79E") else Color.parseColor("#5DBB63")
+        val sway = if (thirsty) 0f else sin(clock * 1.5f + i) * 1.8f * d
+        val droop = if (thirsty) 8f * d else 0f
+        var topX = cx
+        var topY = baseY - 20f * d
+        when (i % 4) {
+            0 -> { // carrot: a fan of feathery leaves and an orange crown
+                val n = 3 + (p * 5f).toInt()
+                val len = (10f + 26f * p) * d
+                for (k in 0 until n) {
+                    val a = Math.toRadians((-90.0 + (k - (n - 1) / 2f) * 24.0)).toFloat()
+                    val tx = cx + kotlin.math.cos(a) * len * 0.8f + sway + (if (k % 2 == 0) -droop else droop) * 0.4f
+                    val ty = baseY - 2f * d + sin(a) * len + droop * 0.5f
+                    line.color = leafDark; line.strokeWidth = 2.2f * d
+                    c.drawLine(cx, baseY - 2f * d, tx, ty, line)
+                    f(leafLight)
+                    c.drawCircle(tx, ty, 3.2f * d, fill)
+                    c.drawCircle((cx + tx) / 2f + 2f * d, (baseY + ty) / 2f, 2.4f * d, fill)
+                }
+                topX = cx; topY = baseY - (14f + 26f * p) * d
+                if (ripe) {
+                    f(Color.parseColor("#FF8A2B"))
+                    c.drawOval(RectF(cx - 7f * d, baseY - 7f * d, cx + 7f * d, baseY + 1f * d), fill)
+                }
+            }
+            1 -> { // tomato: a wooden stake, leaves, little flowers, then green and red tomatoes
+                val h = (10f + 46f * p) * d
+                line.color = Color.parseColor("#B98A5E"); line.strokeWidth = 2f * d
+                c.drawLine(cx + 7f * d, baseY, cx + 7f * d, baseY - 58f * d, line)
+                line.color = leafDark; line.strokeWidth = 2.6f * d
+                topX = cx + sway + droop; topY = baseY - h + droop * 0.5f
+                c.drawLine(cx, baseY, topX, topY, line)
+                for (k in 0 until 2 + (p * 4f).toInt()) {
+                    val t = 0.25f + 0.17f * k
+                    val lx = cx + (topX - cx) * t
+                    val ly = baseY - h * t
+                    f(if (k % 2 == 0) leafDark else leafLight)
+                    c.drawOval(RectF(lx - 12f * d, ly - 3f * d, lx - 1f * d, ly + 3f * d), fill)
+                    c.drawOval(RectF(lx + 1f * d, ly - 6f * d, lx + 12f * d, ly), fill)
+                }
+                if (p in 0.4f..0.7f) { f(Color.parseColor("#FFE27A")); c.drawCircle(topX - 5f * d, topY + 6f * d, 2.4f * d, fill); c.drawCircle(topX + 4f * d, topY + 12f * d, 2.4f * d, fill) }
+                if (p > 0.6f) {
+                    val color = if (ripe) Color.parseColor("#E63946") else Color.parseColor("#8FCB6A")
+                    val pos = floatArrayOf(-9f, -26f, 9f, -34f, -6f, -44f)
+                    var k = 0
+                    while (k < pos.size) {
+                        f(color); c.drawCircle(cx + pos[k] * d + droop * 0.3f, baseY + pos[k + 1] * d * (0.4f + 0.6f * p), 4.4f * d, fill)
+                        f(Color.parseColor("#33FFFFFF")); c.drawCircle(cx + pos[k] * d - 1.4f * d, baseY + pos[k + 1] * d * (0.4f + 0.6f * p) - 1.4f * d, 1.4f * d, fill)
+                        k += 2
+                    }
+                }
+            }
+            2 -> { // strawberry: a low bush with three-lobed leaves, white flowers and red berries
+                val r = (6f + 12f * p) * d
+                for (k in 0 until 5) {
+                    val a = Math.toRadians((-160.0 + k * 35.0)).toFloat()
+                    val lx = cx + kotlin.math.cos(a) * r + sway * 0.4f
+                    val ly = baseY - 4f * d + sin(a) * r * 0.7f + droop * 0.4f
+                    f(if (k % 2 == 0) leafDark else leafLight)
+                    c.drawCircle(lx - 3f * d, ly, 4.4f * d, fill); c.drawCircle(lx + 3f * d, ly, 4.4f * d, fill); c.drawCircle(lx, ly - 3.4f * d, 4.4f * d, fill)
+                }
+                topX = cx; topY = baseY - (10f + 12f * p) * d
+                if (p in 0.35f..0.75f) {
+                    f(Color.WHITE)
+                    for (k in 0 until 3) { c.drawCircle(cx - 8f * d + k * 8f * d, baseY - 12f * d - (k % 2) * 3f * d, 2.6f * d, fill) }
+                    f(Color.parseColor("#FFD93B")); c.drawCircle(cx, baseY - 12f * d, 1.2f * d, fill)
+                }
+                if (p > 0.7f) {
+                    val color = if (ripe) Color.parseColor("#E63946") else Color.parseColor("#E9A8A0")
+                    for (k in 0 until 3) {
+                        val bx = cx - 9f * d + k * 9f * d
+                        val by = baseY - 6f * d + (k % 2) * 2f * d
+                        path.reset(); path.moveTo(bx - 4f * d, by - 3f * d); path.lineTo(bx + 4f * d, by - 3f * d); path.lineTo(bx, by + 5f * d); path.close()
+                        f(color); c.drawPath(path, fill)
+                        f(Color.parseColor("#FFF3B0")); c.drawCircle(bx - 1.4f * d, by, 0.8f * d, fill); c.drawCircle(bx + 1.4f * d, by + 1.4f * d, 0.8f * d, fill)
+                    }
+                }
+            }
+            else -> { // sunflower: a tall thick stem, big leaves, a bud and then a big flower head
+                val h = (10f + 54f * p) * d
+                topX = cx + sway + droop; topY = baseY - h + droop * 0.5f
+                line.color = if (thirsty) Color.parseColor("#9FAF86") else Color.parseColor("#4C9F3F"); line.strokeWidth = 4.4f * d
+                c.drawLine(cx, baseY, topX, topY, line)
+                f(leafDark)
+                c.drawOval(RectF(cx - 17f * d, baseY - h * 0.4f - 4f * d, cx - 2f * d, baseY - h * 0.4f + 4f * d), fill)
+                c.drawOval(RectF(cx + 2f * d, baseY - h * 0.6f - 4f * d, cx + 17f * d, baseY - h * 0.6f + 4f * d), fill)
+                if (p < 0.55f) {
+                    f(leafLight); c.drawCircle(topX, topY - 2f * d, 4.4f * d, fill)
+                } else {
+                    c.save()
+                    c.translate(topX, topY - 6f * d)
+                    if (ripe) c.rotate(-14f)
+                    val rr0 = (6f + 8f * (p - 0.55f) / 0.45f) * d
+                    f(if (thirsty) Color.parseColor("#E6D78A") else Color.parseColor("#FFD93B"))
+                    for (k in 0 until 12) {
+                        val a = k * 0.5236f
+                        c.drawOval(RectF(kotlin.math.cos(a) * rr0 - 3.4f * d, sin(a) * rr0 - 3.4f * d, kotlin.math.cos(a) * rr0 + 3.4f * d, sin(a) * rr0 + 3.4f * d), fill)
+                    }
+                    f(Color.parseColor("#6B4428")); c.drawCircle(0f, 0f, rr0 * 0.62f, fill)
+                    f(Color.parseColor("#8B5E3C")); c.drawCircle(-rr0 * 0.15f, -rr0 * 0.15f, rr0 * 0.28f, fill)
+                    c.restore()
+                }
+            }
         }
-        if (st.ripe) {
-            if (i % 4 == 0) drawCropIcon(c, 0, cx, baseY - 6f * d, 1.5f * d) else drawCropIcon(c, i, topX, topY - 3f * d, 1.6f * d)
+        if (ripe) {
             line.color = Color.parseColor("#2EAD4B")
             line.strokeWidth = 3f * d
             line.alpha = (150f + 100f * sin(clock * 6f)).toInt().coerceIn(0, 255)
@@ -734,7 +904,8 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
         // The plots
         for (i in 0 until Farm.PLOTS) {
             val cx = plotCenterX(farmSlot, i, d)
-            rr(c, cx - 27f * d, ground + 40f * d, cx + 27f * d, ground + 88f * d, 9f * d, Color.parseColor("#8B5E3C"))
+            val wet = (plots[i]?.hydrated ?: 0f) > 0.3f
+            rr(c, cx - 27f * d, ground + 40f * d, cx + 27f * d, ground + 88f * d, 9f * d, if (wet) Color.parseColor("#6B4527") else Color.parseColor("#8B5E3C"))
             line.color = Color.parseColor("#6E4728")
             line.strokeWidth = 2f * d
             for (k in 0 until 3) c.drawLine(cx - 22f * d, ground + 52f * d + k * 13f * d, cx + 22f * d, ground + 52f * d + k * 13f * d, line)
@@ -759,6 +930,18 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
         f(Color.parseColor("#F2D2A9")); c.drawCircle(sx, ground + 20f * d, 9f * d, fill)
         f(Color.parseColor("#E9C46A")); c.drawOval(RectF(sx - 15f * d, ground + 11f * d, sx + 15f * d, ground + 18f * d), fill)
         c.drawRoundRect(RectF(sx - 8f * d, ground + 2f * d, sx + 8f * d, ground + 14f * d), 4f * d, 4f * d, fill)
+        // A stone well with a little roof behind the fence
+        val wx = x0 + 150f * d
+        rr(c, wx - 15f * d, ground - 28f * d, wx + 15f * d, ground + 8f * d, 4f * d, Color.parseColor("#B9B3C9"))
+        line.color = Color.parseColor("#9A94AE"); line.strokeWidth = 1.4f * d
+        c.drawLine(wx - 15f * d, ground - 14f * d, wx + 15f * d, ground - 14f * d, line)
+        c.drawLine(wx - 5f * d, ground - 28f * d, wx - 5f * d, ground - 14f * d, line)
+        c.drawLine(wx + 6f * d, ground - 14f * d, wx + 6f * d, ground + 8f * d, line)
+        rr(c, wx - 17f * d, ground - 46f * d, wx - 13f * d, ground - 26f * d, 1.5f * d, Color.parseColor("#8B5E3C"))
+        rr(c, wx + 13f * d, ground - 46f * d, wx + 17f * d, ground - 26f * d, 1.5f * d, Color.parseColor("#8B5E3C"))
+        path.reset(); path.moveTo(wx - 23f * d, ground - 44f * d); path.lineTo(wx, ground - 60f * d); path.lineTo(wx + 23f * d, ground - 44f * d); path.close()
+        f(Color.parseColor("#B8503D")); c.drawPath(path, fill)
+        rr(c, wx - 4f * d, ground - 32f * d, wx + 4f * d, ground - 24f * d, 2f * d, Color.parseColor("#6C8EAD"))
         // The farmer at work: seeds, the watering can or the basket
         if (farmerAction != 0 && farmerTarget >= 0) {
             val cx = plotCenterX(farmSlot, farmerTarget, d)
@@ -789,6 +972,494 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
                     f(Color.parseColor("#FFD93B"), (140f + 100f * sin(farmerT * 10f)).toInt().coerceIn(0, 255))
                     c.drawCircle(cx, ground + 14f * d, 6f * d, fill)
                 }
+            }
+        }
+    }
+
+
+    // ---------------------------------------------------------------- the sky: planes, helicopters, balloons and real birds
+
+    private fun spawnBirds(h: Float, vw: Float) {
+        val dir = if (Random.nextBoolean()) 1f else -1f
+        val roll = Random.nextInt(100)
+        val startX = if (dir > 0f) -100f * d else vw + 100f * d
+        if (roll < 28 && birds.none { it.kind == 0 }) {
+            // An eagle soaring in wide circles with long gliding stretches
+            val b = Bird(0, dir, h * (0.16f + Random.nextFloat() * 0.1f), (50f + Random.nextFloat() * 20f) * d, 1.7f)
+            b.cx = if (dir > 0f) -20f * d else vw + 20f * d
+            b.x = b.cx
+            birds.add(b)
+        } else if (roll < 56) {
+            // Swallows darting up and down
+            val y = h * (0.18f + Random.nextFloat() * 0.28f)
+            for (k in 0 until 3 + Random.nextInt(2)) {
+                val b = Bird(1, dir, y, (115f + Random.nextFloat() * 40f) * d, 0.8f + Random.nextFloat() * 0.2f)
+                b.x = startX - dir * k * 30f * d
+                birds.add(b)
+            }
+        } else if (roll < 82) {
+            // A loose flock of white doves
+            val y = h * (0.16f + Random.nextFloat() * 0.26f)
+            for (k in 0 until 5 + Random.nextInt(4)) {
+                val b = Bird(2, dir, y + ((k % 3) - 1) * 14f * d, (58f + Random.nextFloat() * 12f) * d, 0.95f)
+                b.x = startX - dir * (k * 26f * d + Random.nextFloat() * 20f * d)
+                birds.add(b)
+            }
+        } else {
+            // Two or three crows
+            val y = h * (0.2f + Random.nextFloat() * 0.2f)
+            for (k in 0 until 2 + Random.nextInt(2)) {
+                val b = Bird(3, dir, y + k * 12f * d, (70f + Random.nextFloat() * 15f) * d, 1.0f)
+                b.x = startX - dir * k * 36f * d
+                birds.add(b)
+            }
+        }
+    }
+
+    private fun stepSky(dt: Float, h: Float, vw: Float) {
+        flyerTimer -= dt
+        if (flyerTimer <= 0f && flyers.size < 2) {
+            val dir = if (Random.nextBoolean()) 1f else -1f
+            val roll = Random.nextInt(100)
+            val kind = if (roll < 40) 0 else if (roll < 65) 1 else if (roll < 82) 2 else 3
+            val palette = intArrayOf(
+                Color.parseColor("#E5484D"), Color.parseColor("#2F7DE1"), Color.parseColor("#2EAD4B"),
+                Color.parseColor("#FF9F1C"), Color.parseColor("#8E5CF7")
+            )
+            val size = if (kind == 3) 0.9f + Random.nextFloat() * 0.4f else 0.6f + Random.nextFloat() * 0.6f
+            val base = floatArrayOf(95f, 62f, 48f, 14f)[kind]
+            val fl = Flyer(kind, dir, h * (0.07f + Random.nextFloat() * 0.22f), base * d * (0.85f + Random.nextFloat() * 0.3f), size, palette[Random.nextInt(palette.size)])
+            fl.x = if (dir > 0f) -120f * d else vw + 120f * d
+            flyers.add(fl)
+            flyerTimer = 12f + Random.nextFloat() * 14f
+        }
+        val fi = flyers.iterator()
+        while (fi.hasNext()) {
+            val fl = fi.next()
+            fl.life += dt
+            fl.x += fl.dir * fl.speed * dt
+            fl.trailAcc += dt
+            val onScreen = fl.x > -100f * d && fl.x < vw + 100f * d
+            if (fl.kind == 0 && fl.trailAcc >= 0.06f && onScreen) {
+                fl.trailAcc = 0f
+                fl.trail.add(floatArrayOf(fl.x - fl.dir * 34f * d * fl.size, fl.y + 2f * d, 0f))
+            }
+            for (tp in fl.trail) tp[2] += dt
+            fl.trail.removeAll { it[2] > 3f }
+            if (!onScreen && fl.trail.isEmpty() && (fl.x < -160f * d || fl.x > vw + 160f * d)) fi.remove()
+        }
+
+        birdTimer -= dt
+        if (birdTimer <= 0f && birds.size < 12) {
+            spawnBirds(h, vw)
+            birdTimer = 6f + Random.nextFloat() * 10f
+        }
+        val bi = birds.iterator()
+        while (bi.hasNext()) {
+            val b = bi.next()
+            b.life += dt
+            when (b.kind) {
+                0 -> if (b.life < 24f) {
+                    val a = b.life * 0.45f + b.phase
+                    b.cx += b.dir * b.speed * 0.28f * dt
+                    val vx = -sin(a) * 110f * d * 0.45f + b.dir * b.speed * 0.28f
+                    b.facing = if (vx >= 0f) 1f else -1f
+                    b.x = b.cx + kotlin.math.cos(a) * 110f * d
+                    b.y = b.y0 + sin(a) * 34f * d
+                    // mostly gliding with wings spread, now and then a few strong wing beats
+                    b.flap = if (sin(b.life * 0.5f) > 0.75f) sin(b.life * 5f) else sin(b.life * 0.9f) * 0.12f
+                } else {
+                    b.x += b.dir * b.speed * 1.6f * dt
+                    b.y -= 6f * d * dt
+                    b.facing = b.dir
+                    b.flap = sin(b.life * 5f) * 0.8f
+                }
+                1 -> {
+                    b.x += b.dir * b.speed * dt
+                    b.y = b.y0 + sin(b.life * 1.7f + b.phase) * 30f * d + sin(b.life * 4.6f + b.phase) * 9f * d
+                    b.facing = b.dir
+                    b.flap = sin(b.life * 15f + b.phase)
+                }
+                2 -> {
+                    b.x += b.dir * b.speed * dt
+                    b.y = b.y0 + sin(b.life * 0.9f + b.phase) * 10f * d
+                    b.facing = b.dir
+                    b.flap = if (sin(b.life * 0.8f + b.phase) > 0.55f) 0.1f else sin(b.life * 9f + b.phase)
+                }
+                else -> {
+                    b.x += b.dir * b.speed * dt
+                    b.y = b.y0 + sin(b.life * 0.7f + b.phase) * 6f * d
+                    b.facing = b.dir
+                    b.flap = sin(b.life * 6.5f + b.phase) * 0.9f
+                }
+            }
+            if ((b.kind != 0 || b.life >= 24f) && (b.x < -220f * d || b.x > vw + 220f * d)) bi.remove()
+        }
+    }
+
+    private fun wing(c: Canvas, sx: Float, sy: Float, span: Float, up: Float, color: Int) {
+        val tipX = sx - span * 0.55f
+        val tipY = sy - up * span
+        path.reset()
+        path.moveTo(sx + 5f, sy)
+        path.quadTo(sx + 2f, sy - up * span * 0.6f - span * 0.25f, tipX, tipY)
+        path.quadTo(sx - span * 0.1f, sy - up * span * 0.3f + 1f, sx - 7f, sy + 1.5f)
+        path.close()
+        f(color)
+        c.drawPath(path, fill)
+        if (span > 15f) {
+            // the long finger feathers of a big bird
+            line.color = Color.parseColor("#3A2814")
+            line.strokeWidth = 1.2f
+            for (k in 0 until 3) c.drawLine(tipX + k * 1.8f, tipY + k, tipX - 3f + k * 1.8f, tipY + 3f + k * 2f, line)
+        }
+    }
+
+    /** A bird with a body, head, beak, tail and two wings that really beat (or glide, for the eagle). */
+    private fun drawBirdReal(c: Canvas, b: Bird) {
+        val body: Int
+        val wingC: Int
+        val head: Int
+        when (b.kind) {
+            0 -> { body = Color.parseColor("#6B4A2B"); wingC = Color.parseColor("#4F351F"); head = Color.parseColor("#F4F1EA") }
+            1 -> { body = Color.parseColor("#2E3A6B"); wingC = Color.parseColor("#1F2850"); head = Color.parseColor("#2E3A6B") }
+            2 -> { body = Color.parseColor("#F6F6FA"); wingC = Color.parseColor("#D9DBE8"); head = Color.parseColor("#F6F6FA") }
+            else -> { body = Color.parseColor("#25253A"); wingC = Color.parseColor("#181826"); head = Color.parseColor("#25253A") }
+        }
+        val span = if (b.kind == 0) 20f else 11f
+        c.save()
+        c.translate(b.x, b.y)
+        c.scale(b.facing * d * b.size, d * b.size)
+        wing(c, -1f, -1f, span, b.flap, wingC)
+        // the tail: forked for the swallow, a fan for the others
+        path.reset()
+        path.moveTo(-8f, -2f)
+        if (b.kind == 1) {
+            path.lineTo(-20f, -5f); path.lineTo(-15f, -1f); path.lineTo(-20f, 3f)
+        } else {
+            path.lineTo(-18f, -4f); path.lineTo(-18f, 3f)
+        }
+        path.lineTo(-8f, 2f)
+        path.close()
+        f(if (b.kind == 0) Color.parseColor("#F4F1EA") else body)
+        c.drawPath(path, fill)
+        f(body)
+        c.drawOval(RectF(-10f, -4.5f, 9f, 4.5f), fill)
+        f(head)
+        c.drawCircle(10f, -1.5f, 3.6f, fill)
+        f(if (b.kind == 0) Color.parseColor("#F2C14E") else Color.parseColor("#3B3B4F"))
+        path.reset(); path.moveTo(13f, -2.6f); path.lineTo(18f, -0.8f); path.lineTo(13f, 0.4f); path.close()
+        c.drawPath(path, fill)
+        f(if (b.kind == 2) Color.parseColor("#2B2540") else Color.WHITE)
+        c.drawCircle(11.4f, -2.4f, 0.9f, fill)
+        wing(c, 2f, -2f, span, b.flap, body)
+        c.restore()
+    }
+
+    private fun drawFlyer(c: Canvas, fl: Flyer) {
+        val s = d * fl.size
+        for (tp in fl.trail) {
+            val a = (1f - tp[2] / 3f).coerceIn(0f, 1f)
+            f(Color.WHITE, (150f * a).toInt())
+            c.drawCircle(tp[0], tp[1], (2.5f + tp[2] * 2f) * d, fill)
+        }
+        c.save()
+        c.translate(fl.x, fl.y)
+        when (fl.kind) {
+            0, 1 -> {
+                if (fl.dir < 0f) c.scale(-1f, 1f)
+                if (fl.kind == 0) {
+                    // an airliner
+                    path.reset(); path.moveTo(-34f * s, -2f * s); path.lineTo(-42f * s, -17f * s); path.lineTo(-26f * s, -2f * s); path.close()
+                    f(fl.color); c.drawPath(path, fill)
+                    path.reset(); path.moveTo(-4f * s, -2f * s); path.lineTo(-20f * s, -15f * s); path.lineTo(-10f * s, -15f * s); path.lineTo(10f * s, -2f * s); path.close()
+                    f(Color.parseColor("#B8C4DA")); c.drawPath(path, fill)
+                    f(Color.WHITE); c.drawOval(RectF(-38f * s, -7f * s, 38f * s, 7f * s), fill)
+                    f(Color.parseColor("#7FB7E6"))
+                    for (k in 0 until 7) c.drawCircle(-22f * s + k * 8f * s, -1.5f * s, 1.7f * s, fill)
+                    line.color = fl.color; line.strokeWidth = 1.6f * s
+                    c.drawLine(-36f * s, 3f * s, 36f * s, 3f * s, line)
+                    path.reset(); path.moveTo(-2f * s, 2f * s); path.lineTo(-22f * s, 17f * s); path.lineTo(-12f * s, 17f * s); path.lineTo(14f * s, 2f * s); path.close()
+                    f(Color.parseColor("#DDE6F5")); c.drawPath(path, fill)
+                } else {
+                    // a small propeller plane with a spinning propeller
+                    path.reset(); path.moveTo(-22f * s, -1f * s); path.lineTo(-30f * s, -12f * s); path.lineTo(-17f * s, -1f * s); path.close()
+                    f(fl.color); c.drawPath(path, fill)
+                    f(fl.color); c.drawOval(RectF(-26f * s, -6f * s, 24f * s, 6f * s), fill)
+                    f(Color.parseColor("#F4E9D0")); c.drawRoundRect(RectF(-30f * s, 7f * s, 12f * s, 11f * s), 2f * s, 2f * s, fill)
+                    line.color = Color.parseColor("#6B5A3A"); line.strokeWidth = 1.4f * s
+                    c.drawLine(-12f * s, 6f * s, -12f * s, 8f * s, line); c.drawLine(6f * s, 6f * s, 6f * s, 8f * s, line)
+                    f(Color.parseColor("#BFE3FF")); c.drawOval(RectF(-6f * s, -5f * s, 8f * s, 1f * s), fill)
+                    val spin = abs(sin(clock * 40f))
+                    f(Color.parseColor("#33000000")); c.drawOval(RectF(23f * s, -12f * s * (0.3f + spin), 27f * s, 12f * s * (0.3f + spin)), fill)
+                    f(Color.parseColor("#6B5A3A")); c.drawCircle(25f * s, 0f, 2f * s, fill)
+                }
+            }
+            2 -> {
+                // a helicopter hovering gently, its rotor blurred
+                if (fl.dir < 0f) c.scale(-1f, 1f)
+                c.translate(0f, sin(clock * 3f + fl.life) * 2f * d)
+                line.color = Color.parseColor("#4A4A68"); line.strokeWidth = 1.8f * s
+                c.drawLine(-14f * s, 12f * s, 14f * s, 12f * s, line)
+                c.drawLine(-8f * s, 9f * s, -8f * s, 12f * s, line); c.drawLine(8f * s, 9f * s, 8f * s, 12f * s, line)
+                line.color = fl.color; line.strokeWidth = 4f * s
+                c.drawLine(-12f * s, -2f * s, -40f * s, -6f * s, line)
+                f(fl.color); c.drawOval(RectF(-18f * s, -10f * s, 16f * s, 9f * s), fill)
+                f(Color.parseColor("#BFE3FF")); c.drawOval(RectF(2f * s, -8f * s, 14f * s, 3f * s), fill)
+                line.color = Color.parseColor("#4A4A68"); line.strokeWidth = 1.6f * s
+                c.drawLine(-1f * s, -10f * s, -1f * s, -14f * s, line)
+                val blur = 0.35f + 0.65f * abs(kotlin.math.cos(clock * 28f))
+                line.color = Color.parseColor("#884A4A68"); line.strokeWidth = 2f * s
+                c.drawLine(-34f * s * blur, -14f * s, 34f * s * blur, -14f * s, line)
+                val tr = abs(sin(clock * 30f))
+                c.drawLine(-40f * s, -6f * s - 6f * s * tr, -40f * s, -6f * s + 6f * s * tr, line)
+            }
+            else -> {
+                // a hot-air balloon drifting slowly with a swinging basket
+                c.translate(0f, sin(clock * 0.9f + fl.x * 0.01f) * 5f * d)
+                f(fl.color); c.drawCircle(0f, -16f * s, 24f * s, fill)
+                f(Color.WHITE); c.drawOval(RectF(-9f * s, -40f * s, 9f * s, 8f * s), fill)
+                f(fl.color); c.drawOval(RectF(-3.5f * s, -40f * s, 3.5f * s, 8f * s), fill)
+                path.reset(); path.moveTo(-14f * s, 4f * s); path.lineTo(14f * s, 4f * s); path.lineTo(5f * s, 16f * s); path.lineTo(-5f * s, 16f * s); path.close()
+                f(fl.color); c.drawPath(path, fill)
+                line.color = Color.parseColor("#8B5E3C"); line.strokeWidth = 1.2f * s
+                c.drawLine(-9f * s, 14f * s, -5f * s, 22f * s, line); c.drawLine(9f * s, 14f * s, 5f * s, 22f * s, line)
+                f(Color.parseColor("#C97B4A")); c.drawRoundRect(RectF(-7f * s, 22f * s, 7f * s, 30f * s), 2f * s, 2f * s, fill)
+            }
+        }
+        c.restore()
+    }
+
+    private fun drawSkyLife2(c: Canvas) {
+        c.save()
+        c.translate(camX * 0.9f, 0f)
+        for (fl in flyers) drawFlyer(c, fl)
+        for (b in birds) drawBirdReal(c, b)
+        c.restore()
+    }
+
+    // ---------------------------------------------------------------- police
+
+    private fun spawnPolice(w: Float) {
+        val v = Vehicle(1, 4, Color.WHITE, 80f * d)
+        v.police = true
+        v.x = 240f * d
+        v.maxSpeed = 62f * d
+        v.speed = v.maxSpeed
+        vehicles.add(v)
+        val traffic = Officer(0, true)
+        traffic.x = crossX() + 64f * d
+        officers.add(traffic)
+        val patrol = Officer(1, false)
+        patrol.x = 90f * d
+        patrol.target = 400f * d
+        officers.add(patrol)
+    }
+
+    private fun stepPolice(dt: Float, w: Float) {
+        val beatEnd = minOf(w, 1000f * d)
+        for (o in officers) {
+            o.phase += dt
+            o.wave = maxOf(0f, o.wave - dt)
+            if (o.traffic) continue
+            if (o.pause > 0f) {
+                o.pause -= dt
+                continue
+            }
+            val diff = o.target - o.x
+            o.dir = if (diff >= 0f) 1f else -1f
+            val step = 24f * d * dt
+            if (abs(diff) <= step) {
+                o.x = o.target
+                o.pause = 4f + Random.nextFloat() * 5f
+                o.target = 70f * d + Random.nextFloat() * maxOf(10f, beatEnd - 140f * d)
+            } else {
+                o.x += o.dir * step
+            }
+        }
+    }
+
+    /** An officer (a bear or a cat) in a blue uniform and a cap; one directs the traffic, one patrols the pavement. */
+    private fun drawOfficer(c: Canvas, o: Officer, footY: Float) {
+        val walking = !o.traffic && o.pause <= 0f
+        val bob = if (walking) abs(sin(o.phase * 9f)) * 3f * d else 0f
+        val navy = Color.parseColor("#2F5DA8")
+        val skin = if (o.kind == 0) Color.parseColor("#A9744F") else Color.parseColor("#F4A261")
+        c.save()
+        c.translate(o.x, footY - bob)
+        if (!o.traffic && o.dir < 0f) c.scale(-1f, 1f)
+        c.scale(0.8f, 0.8f)
+        f(Color.parseColor("#1F3F73"))
+        c.drawRoundRect(RectF(-9f * d, -9f * d, -2f * d, 0f), 2f * d, 2f * d, fill)
+        c.drawRoundRect(RectF(2f * d, -9f * d, 9f * d, 0f), 2f * d, 2f * d, fill)
+        rr(c, -14f * d, -42f * d, 14f * d, -8f * d, 8f * d, navy)
+        rr(c, -14f * d, -19f * d, 14f * d, -15f * d, 2f * d, Color.parseColor("#1B1B2B"))
+        f(Color.parseColor("#FFD93B"))
+        c.drawCircle(0f, -30f * d, 1.8f * d, fill)
+        c.drawCircle(0f, -24f * d, 1.8f * d, fill)
+        c.drawCircle(-7f * d, -34f * d, 2.4f * d, fill)
+        // arms: one raised to stop the cars (or sweeping them on), the other at the side
+        line.color = navy
+        line.strokeWidth = 5f * d
+        c.drawLine(-14f * d, -36f * d, -20f * d, -20f * d, line)
+        val light = lightState()
+        val waving = o.wave > 0f
+        val handX: Float
+        val handY: Float
+        if (waving) {
+            handX = 22f * d + sin(clock * 12f) * 6f * d; handY = -58f * d
+        } else if (o.traffic) {
+            handX = if (light == 2) 24f * d else 22f * d + sin(clock * 4f) * 14f * d
+            handY = -56f * d
+        } else {
+            handX = 20f * d + sin(o.phase * 9f) * 3f * d; handY = -22f * d
+        }
+        c.drawLine(14f * d, -36f * d, handX, handY, line)
+        f(skin)
+        c.drawCircle(handX, handY, 3.4f * d, fill)
+        c.drawCircle(-20f * d, -20f * d, 3.4f * d, fill)
+        // the head, with ears by animal
+        f(skin)
+        c.drawCircle(0f, -52f * d, 13f * d, fill)
+        if (o.kind == 0) {
+            c.drawCircle(-11f * d, -62f * d, 5f * d, fill)
+            c.drawCircle(11f * d, -62f * d, 5f * d, fill)
+            f(Color.parseColor("#E3C29F"))
+            c.drawOval(RectF(-6f * d, -52f * d, 6f * d, -44f * d), fill)
+        } else {
+            path.reset(); path.moveTo(-12f * d, -58f * d); path.lineTo(-9f * d, -71f * d); path.lineTo(-3f * d, -62f * d); path.close()
+            c.drawPath(path, fill)
+            path.reset(); path.moveTo(12f * d, -58f * d); path.lineTo(9f * d, -71f * d); path.lineTo(3f * d, -62f * d); path.close()
+            c.drawPath(path, fill)
+        }
+        f(Color.parseColor("#2B2540"))
+        c.drawCircle(-4.5f * d, -54f * d, 2f * d, fill)
+        c.drawCircle(4.5f * d, -54f * d, 2f * d, fill)
+        line.color = Color.parseColor("#2B2540")
+        line.strokeWidth = 1.6f * d
+        rect.set(-4f * d, -51f * d, 4f * d, -44f * d)
+        c.drawArc(rect, 20f, 140f, false, line)
+        // the cap with a badge
+        path.reset(); path.moveTo(-11f * d, -61f * d); path.lineTo(-9f * d, -73f * d); path.lineTo(9f * d, -73f * d); path.lineTo(11f * d, -61f * d); path.close()
+        f(navy)
+        c.drawPath(path, fill)
+        rr(c, -14f * d, -62f * d, 14f * d, -58f * d, 2f * d, Color.parseColor("#1B1B2B"))
+        f(Color.parseColor("#FFD93B"))
+        c.drawCircle(0f, -67f * d, 3.2f * d, fill)
+        c.restore()
+    }
+
+    /** Touching the patrol car sounds its siren; touching an officer makes him blow the whistle and wave. */
+    fun tapPolice(x: Float, y: Float): Boolean {
+        val ground = height * GROUND
+        for (v in vehicles) {
+            if (!v.police) continue
+            val ly = ground + (if (v.lane == 0) 134f else 158f) * d
+            if (abs(x - v.x) < v.length / 2f && y in (ly - 40f * d)..(ly + 20f * d)) {
+                Sounds.play(context, Snd.SIREN, true)
+                return true
+            }
+        }
+        for (o in officers) {
+            val oy = ground + 112f * d
+            if (abs(x - o.x) < 26f * d && y in (oy - 70f * d)..(oy + 8f * d)) {
+                o.wave = 2f
+                Sounds.play(context, Snd.WHISTLE, true)
+                return true
+            }
+        }
+        return false
+    }
+
+    // ---------------------------------------------------------------- trees
+
+    private fun drawTree(c: Canvas, x: Float, baseY: Float, species: Int, size: Float, seed: Int) {
+        val sway = sin(clock * 1.1f + seed) * 1.6f
+        c.save()
+        c.translate(x, baseY)
+        c.scale(size, size)
+        f(Color.BLACK, 40)
+        c.drawOval(RectF(-24f * d, -4f * d, 28f * d, 6f * d), fill)
+        when (species) {
+            0 -> { // oak: a branching trunk and a rounded, layered crown
+                rr(c, -5f * d, -50f * d, 5f * d, 0f, 3f * d, Color.parseColor("#7A5230"))
+                line.color = Color.parseColor("#7A5230")
+                line.strokeWidth = 3f * d
+                c.drawLine(0f, -34f * d, -14f * d, -48f * d, line)
+                c.drawLine(0f, -30f * d, 13f * d, -46f * d, line)
+                c.save()
+                c.rotate(sway, 0f, -40f * d)
+                f(Color.parseColor("#3E8E4A"))
+                c.drawCircle(-17f * d, -62f * d, 22f * d, fill); c.drawCircle(17f * d, -60f * d, 22f * d, fill); c.drawCircle(0f, -80f * d, 26f * d, fill)
+                f(Color.parseColor("#58A863"))
+                c.drawCircle(-11f * d, -67f * d, 18f * d, fill); c.drawCircle(12f * d, -66f * d, 17f * d, fill); c.drawCircle(0f, -84f * d, 20f * d, fill)
+                f(Color.parseColor("#82CC84"))
+                c.drawCircle(-8f * d, -75f * d, 9f * d, fill); c.drawCircle(10f * d, -79f * d, 8f * d, fill)
+                c.restore()
+            }
+            1 -> { // pine in tiers
+                rr(c, -4f * d, -22f * d, 4f * d, 0f, 2f * d, Color.parseColor("#6B4428"))
+                val tiers = intArrayOf(Color.parseColor("#2F7A52"), Color.parseColor("#3F8F63"), Color.parseColor("#4FA373"), Color.parseColor("#5FB27A"))
+                c.save()
+                c.rotate(sway * 0.6f, 0f, -20f * d)
+                for (k in 0 until 4) {
+                    val ty = -16f * d - k * 20f * d
+                    val half = (24f - k * 5f) * d
+                    path.reset(); path.moveTo(-half, ty); path.lineTo(0f, ty - 30f * d); path.lineTo(half, ty); path.close()
+                    f(tiers[k]); c.drawPath(path, fill)
+                }
+                c.restore()
+            }
+            2 -> { // cherry blossom with falling petals
+                rr(c, -4.5f * d, -46f * d, 4.5f * d, 0f, 3f * d, Color.parseColor("#8B5E4A"))
+                c.save()
+                c.rotate(sway, 0f, -40f * d)
+                f(Color.parseColor("#FFB7D5"))
+                c.drawCircle(-17f * d, -60f * d, 21f * d, fill); c.drawCircle(17f * d, -58f * d, 21f * d, fill); c.drawCircle(0f, -78f * d, 24f * d, fill)
+                f(Color.parseColor("#FFD6E8"))
+                c.drawCircle(-10f * d, -66f * d, 14f * d, fill); c.drawCircle(11f * d, -70f * d, 13f * d, fill); c.drawCircle(0f, -82f * d, 14f * d, fill)
+                f(Color.WHITE, 220)
+                for (k in 0 until 6) c.drawCircle((-20f + k * 8f) * d, (-60f - (k % 3) * 10f) * d, 2.2f * d, fill)
+                c.restore()
+                for (k in 0 until 4) {
+                    val age = (clock * 0.4f + k * 0.25f + seed * 0.1f) % 1f
+                    f(Color.parseColor("#FFC2DA"), ((1f - age) * 220f).toInt())
+                    c.drawCircle((-22f + k * 15f) * d + sin(clock * 2f + k) * 6f * d, (-50f + age * 50f) * d, 2.2f * d, fill)
+                }
+            }
+            else -> { // apple tree with red apples
+                rr(c, -5f * d, -44f * d, 5f * d, 0f, 3f * d, Color.parseColor("#7A5230"))
+                c.save()
+                c.rotate(sway, 0f, -40f * d)
+                f(Color.parseColor("#4FA24F"))
+                c.drawCircle(-16f * d, -58f * d, 20f * d, fill); c.drawCircle(16f * d, -58f * d, 20f * d, fill); c.drawCircle(0f, -74f * d, 23f * d, fill)
+                f(Color.parseColor("#6CBC6A"))
+                c.drawCircle(-9f * d, -66f * d, 12f * d, fill); c.drawCircle(10f * d, -70f * d, 11f * d, fill)
+                f(Color.parseColor("#E63946"))
+                val apples = floatArrayOf(-20f, -54f, 14f, -50f, -4f, -66f, 18f, -70f, -14f, -76f)
+                var k = 0
+                while (k < apples.size) {
+                    c.drawCircle(apples[k] * d, apples[k + 1] * d, 3.4f * d, fill)
+                    k += 2
+                }
+                c.restore()
+            }
+        }
+        c.restore()
+    }
+
+    /** A row of different trees behind the houses: they stand farther away, so they are smaller and shift slower. */
+    private fun drawTreeRow(c: Canvas, ground: Float) {
+        val y = ground - 26f * d
+        depthPattern(c, y) { wx0, wx1 ->
+            val step = 76f * d
+            var i = (wx0 / step).toInt() - 1
+            while (i * step < wx1) {
+                val species = ((i * 7 + 3) % 4 + 4) % 4
+                val x = i * step + (((i * 13) % 5 + 5) % 5) * 6f * d
+                val size = 0.8f + (((i * 5) % 4 + 4) % 4) * 0.12f
+                drawTree(c, x, y, species, size, i)
+                i++
             }
         }
     }
@@ -958,7 +1629,7 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
                 c.drawOval(RectF(x - 34f * cs, y + 6f * cs, x + 38f * cs, y + 18f * cs), fill)
             }
         }
-        drawSkyLife(c)
+        drawSkyLife2(c)
         layer(c, 0.15f) { start ->
             val step = 190f * d
             var i = (start / step).toInt() - 2

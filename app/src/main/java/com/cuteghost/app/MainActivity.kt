@@ -74,6 +74,10 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.neglectButton).setOnClickListener { testNeglect() }
         findViewById<Button>(R.id.seasonButton).setOnClickListener { testSeasonNow() }
         findViewById<Button>(R.id.peekButton).setOnClickListener { testSurprise(true) }
+        findViewById<android.widget.CheckBox>(R.id.soundCheck).apply {
+            isChecked = Sounds.enabled(this@MainActivity)
+            setOnCheckedChangeListener { _, on -> Sounds.setEnabled(this@MainActivity, on) }
+        }
         findViewById<android.widget.CheckBox>(R.id.adTestCheck).apply {
             isChecked = RewardedAds.testMode(this@MainActivity)
             setOnCheckedChangeListener { _, on -> RewardedAds.setTestMode(this@MainActivity, on) }

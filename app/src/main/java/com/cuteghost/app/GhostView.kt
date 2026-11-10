@@ -779,6 +779,7 @@ class GhostView @JvmOverloads constructor(
     // =====================================================================
 
     private fun setOverride(m: Mood, seconds: Float) {
+        if (m == Mood.CRYING) Sounds.play(context, Snd.CRY)
         overrideMood = m
         overrideTimer = seconds
     }
@@ -1055,7 +1056,16 @@ class GhostView @JvmOverloads constructor(
         }
     }
 
+    private fun playTapSound(type: TapAnim) {
+        when (type) {
+            TapAnim.LAUGH, TapAnim.WIGGLE_HOP -> Sounds.play(context, Snd.GIGGLE)
+            TapAnim.HOP, TapAnim.DOUBLE_HOP, TapAnim.REBOUND -> Sounds.play(context, Snd.BOING)
+            else -> Unit
+        }
+    }
+
     private fun startTapAnim(type: TapAnim) {
+        playTapSound(type)
         tapAnim = type
         tapT = 0f
         tapDur = when (type) {
