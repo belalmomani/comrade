@@ -664,6 +664,23 @@ class GhostView @JvmOverloads constructor(
     }
 
     /** Shy: it blushes and looks down (used when it is discovered). */
+    /** A funny, naughty move (shake, wiggle-hop, double hop, rebound or a big laugh) with a cheeky face. */
+    fun funnyMove(kind: Int) {
+        if (forcedSleep || feedState != FeedState.NONE) return
+        val anim: TapAnim
+        val face: Mood
+        when (((kind % 5) + 5) % 5) {
+            0 -> { anim = TapAnim.SHAKE; face = Mood.MISCHIEVOUS }
+            1 -> { anim = TapAnim.WIGGLE_HOP; face = Mood.LAUGHING }
+            2 -> { anim = TapAnim.DOUBLE_HOP; face = Mood.MISCHIEVOUS }
+            3 -> { anim = TapAnim.REBOUND; face = Mood.LAUGHING }
+            else -> { anim = TapAnim.LAUGH; face = Mood.LAUGHING }
+        }
+        idle = 0f
+        startTapAnim(anim)
+        setOverride(face, 2.2f)
+    }
+
     fun showShy() {
         if (feedState != FeedState.NONE || forcedSleep) return
         setOverride(Mood.SHY, 2.0f)
@@ -762,6 +779,7 @@ class GhostView @JvmOverloads constructor(
     // =====================================================================
 
     private fun setOverride(m: Mood, seconds: Float) {
+        if (m == Mood.CRYING) Sounds.play(context, Snd.CRY)
         overrideMood = m
         overrideTimer = seconds
     }
@@ -907,7 +925,7 @@ class GhostView @JvmOverloads constructor(
             feedState == FeedState.EATING -> Mood.EATING
             feedState == FeedState.DRINKING -> Mood.DRINKING
             feedState == FeedState.HUNGRY -> Mood.HUNGRY
-            feedState == FeedState.THIRSTY -> Mood.THIRSTY
+            feedState == FeedState.THIRSTY -> if (cryWhenThirsty) Mood.CRYING else Mood.THIRSTY
             neglect >= 3 -> Mood.SICK
             neglect == 2 -> Mood.CRYING
             neglect == 1 -> Mood.SAD
@@ -1038,7 +1056,16 @@ class GhostView @JvmOverloads constructor(
         }
     }
 
+    private fun playTapSound(type: TapAnim) {
+        when (type) {
+            TapAnim.LAUGH, TapAnim.WIGGLE_HOP -> Sounds.play(context, Snd.GIGGLE)
+            TapAnim.HOP, TapAnim.DOUBLE_HOP, TapAnim.REBOUND -> Sounds.play(context, Snd.BOING)
+            else -> Unit
+        }
+    }
+
     private fun startTapAnim(type: TapAnim) {
+        playTapSound(type)
         tapAnim = type
         tapT = 0f
         tapDur = when (type) {
@@ -1195,8 +1222,26 @@ class GhostView @JvmOverloads constructor(
     // Drawing
     // =====================================================================
 
+    /** Babies cry while they ask for their milk. */
+    var cryWhenThirsty = false
+
+    /** Set on the second twin: it draws exactly what [mirrorOf] does, turned around. */
+    var mirrorOf: GhostView? = null
+
     override fun onDraw(canvas: Canvas) {
-        val s = min(width / LOGICAL_W, height / LOGICAL_H)
+        val src = mirrorOf
+        if (src != null) {
+            canvas.save()
+            canvas.scale(-1f, 1f, width / 2f, height / 2f)
+            src.drawFrame(canvas, width, height)
+            canvas.restore()
+        } else {
+            drawFrame(canvas, width, height)
+        }
+    }
+
+    private fun drawFrame(canvas: Canvas, w: Int, h: Int) {
+        val s = min(w / LOGICAL_W, h / LOGICAL_H)
         val chewing = mood == Mood.EATING || mood == Mood.DRINKING
         val sobbing = mood == Mood.CRYING
         val moodY = sagAmt * 2.8f + swayAmt * 1.2f + cryAmt * abs(sin(cryPhase * 0.5f)) * 1.6f -
@@ -1206,7 +1251,7 @@ class GhostView @JvmOverloads constructor(
         val squash = jumpSq + sagAmt * 0.03f + (if (chewing) talkOpen * 0.02f else 0f)
 
         canvas.save()
-        canvas.translate((width - LOGICAL_W * s) / 2f, (height - LOGICAL_H * s) / 2f)
+        canvas.translate((w - LOGICAL_W * s) / 2f, (h - LOGICAL_H * s) / 2f)
         canvas.scale(s, s)
         canvas.translate(tapX, GHOST_OFFSET_Y + floatY + jumpY + moodY)
         canvas.rotate(idleTilt + dragTilt + tapRot + moodTilt, 50f, 90f)
@@ -1220,11 +1265,39 @@ class GhostView @JvmOverloads constructor(
         canvas.restore()
     }
 
+    /** True when the ghost needs a bath: brown smudges and little smell lines. */
+    var dirty = false
+    private val dirtPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    private fun drawDirt(c: Canvas) {
+        dirtPaint.style = Paint.Style.FILL
+        dirtPaint.color = Color.parseColor("#8D6E4A")
+        dirtPaint.alpha = 150
+        val spots = floatArrayOf(27f, 72f, 5f, 68f, 80f, 6f, 47f, 98f, 5f, 76f, 58f, 4f, 35f, 102f, 4f, 56f, 76f, 3.5f)
+        var i = 0
+        while (i < spots.size) {
+            c.drawCircle(spots[i], spots[i + 1], spots[i + 2], dirtPaint)
+            i += 3
+        }
+        dirtPaint.style = Paint.Style.STROKE
+        dirtPaint.strokeWidth = 2f
+        dirtPaint.strokeCap = Paint.Cap.ROUND
+        dirtPaint.color = Color.parseColor("#7FB069")
+        dirtPaint.alpha = 190
+        for (k in 0 until 3) {
+            val x = 28f + k * 22f
+            val wob = sin(time * 3f + k) * 2f
+            c.drawLine(x, 8f, x + wob, 0f, dirtPaint)
+            c.drawLine(x + wob, 0f, x, -8f, dirtPaint)
+        }
+    }
+
     private fun drawGhost(c: Canvas) {
         drawBehind(c)
         c.drawPath(body, bodyPaint)
         c.drawPath(body, shadePaint)
         c.drawCircle(30f, 28f, 15f, highlightPaint)
+        if (dirty) drawDirt(c)
 
         // Eyes
         val rx = cur[0]
@@ -1401,6 +1474,29 @@ class GhostView @JvmOverloads constructor(
                 itemPaint.color = Color.parseColor("#3D8BFD")
                 c.drawCircle(41f, 15f, 1.6f, itemPaint)
                 c.drawCircle(59f, 15f, 1.6f, itemPaint)
+            }
+            8 -> { // the farmer's straw hat
+                itemPaint.color = Color.parseColor("#E9C46A")
+                itemPaint.alpha = 255
+                rect.set(26f, 14f, 74f, 24f)
+                c.drawOval(rect, itemPaint)
+                rect.set(37f, 3f, 63f, 20f)
+                c.drawRoundRect(rect, 7f, 7f, itemPaint)
+                itemPaint.color = Color.parseColor("#E5484D")
+                rect.set(37f, 13f, 63f, 18f)
+                c.drawRect(rect, itemPaint)
+            }
+            7 -> { // the cook's tall white hat
+                itemPaint.color = Color.WHITE
+                itemPaint.alpha = 255
+                c.drawCircle(38f, 6f, 8f, itemPaint)
+                c.drawCircle(50f, -2f, 10f, itemPaint)
+                c.drawCircle(62f, 6f, 8f, itemPaint)
+                rect.set(37f, 6f, 63f, 20f)
+                c.drawRoundRect(rect, 3f, 3f, itemPaint)
+                itemPaint.color = Color.parseColor("#D9D2E9")
+                rect.set(37f, 15f, 63f, 20f)
+                c.drawRoundRect(rect, 2f, 2f, itemPaint)
             }
             4, 5, 6 -> { // night cap (blue, pink, with a star)
                 val capColor = when (outfitHat) {

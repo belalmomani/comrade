@@ -14,11 +14,11 @@ object Family {
     /** Size of a newborn baby compared with the big ghost (1.0). */
     const val NEWBORN_SCALE = 0.40f
 
-    /** Every meal a baby eats makes it grow by this much of the big ghost's size (1%). */
+    /** Every meal and every bottle of milk makes a baby grow by this much of the big ghost's size (1%). */
     const val GROWTH_PER_MEAL = 0.01f
 
-    /** Babies never grow bigger than this. */
-    const val MAX_BABY_SCALE = 0.85f
+    /** At the size of the big ghost (1.0) a baby has grown up and moves to its own house in the village. */
+    const val MAX_BABY_SCALE = 1.0f
 
     fun babyScale(meals: Int): Float =
         minOf(MAX_BABY_SCALE, NEWBORN_SCALE + GROWTH_PER_MEAL * meals.coerceAtLeast(0))

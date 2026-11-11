@@ -171,4 +171,15 @@
     <string name="notice_visitor">خرج ضيف غريب من البوابة! سيزورنا دقيقة.</string>
     <string name="notice_no_baby">لا يوجد ابن في الخارج الآن.</string>
     <string name="house_open">منزل الشبح</string>
+    <string name="play_open">مدينة ألعاب سحابية</string>
+    <string name="village_open">القرية</string>
+    <string name="grow_now">جرّب: كبّر ابنًا وانقله إلى القرية</string>
+    <string name="mischief_allow">السماح للأشباح بمشاغبات مزحة (شاشة متشققة وهمية، ألوان، فقاعات، رقص مضحك)</string>
+    <string name="mischief_now">جرّب مشاغبة الآن</string>
+    <string name="give_now">جرّب: أضف 20 نجمة و10 مواد</string>
+    <string name="bath_now">جرّب: الاستحمام الآن</string>
+    <string name="brush_now">جرّب: تنظيف الأسنان الآن</string>
+    <string name="mystery_egg_now">جرّب: بيضة عجيبة (توأمان) الآن</string>
+    <string name="ad_test_mode">وضع تجربة الإعلانات: إعلان وهمي لاختبار المكافآت (لا يوجد مزوّد إعلانات حقيقي)</string>
+    <string name="sound_on">الأصوات (ضحك ومضغ ونوم وأصوات القرية): هادئة ويمكن إيقافها</string>
 </resources>

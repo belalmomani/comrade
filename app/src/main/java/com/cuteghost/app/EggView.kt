@@ -35,6 +35,10 @@ class EggView @JvmOverloads constructor(
     var baby: GhostView? = null
     var tint: Int = Color.parseColor("#7C5CFF")
 
+    /** A mystery egg: it shows a question mark and sparkles (twins hatch from it). */
+    var mystery = false
+    private val qPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
     private val d = resources.displayMetrics.density
 
     private var startMs = 0L
@@ -272,6 +276,20 @@ class EggView @JvmOverloads constructor(
 
     private fun drawWhole(c: Canvas) {
         drawSurface(c, 1f)
+        if (mystery) {
+            qPaint.color = Color.parseColor("#7C5CFF")
+            qPaint.textSize = 30f
+            qPaint.textAlign = Paint.Align.CENTER
+            qPaint.isFakeBoldText = true
+            c.drawText("؟", 35f, 62f, qPaint)
+            fillPaint.style = Paint.Style.FILL
+            fillPaint.shader = null
+            for (k in 0 until 3) {
+                fillPaint.color = Color.parseColor("#FFE27A")
+                fillPaint.alpha = (150f + 100f * sin(clock * 3f + k)).toInt().coerceIn(0, 255)
+                c.drawCircle(18f + k * 17f, 30f + (k % 2) * 12f, 2.2f, fillPaint)
+            }
+        }
 
         // Cracks appear gradually: segment by segment, the last one growing smoothly
         val total = cracks.size / 4

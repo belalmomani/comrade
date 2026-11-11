@@ -17,7 +17,7 @@ class FurnCardView(
     private val item: Furn,
     var owned: Boolean,
     var placed: Boolean,
-    var selected: Boolean
+    var chosen: Boolean
 ) : View(context) {
 
     private val d = resources.displayMetrics.density
@@ -72,7 +72,7 @@ class FurnCardView(
         fill.style = Paint.Style.FILL
         fill.color = Color.parseColor("#F3EEFF")
         canvas.drawRoundRect(rect, 14f * d, 14f * d, fill)
-        stroke.color = if (selected) Color.parseColor("#FFC93C") else Color.parseColor("#D9CCFF")
+        stroke.color = if (chosen) Color.parseColor("#FFC93C") else Color.parseColor("#D9CCFF")
         canvas.drawRoundRect(rect, 14f * d, 14f * d, stroke)
 
         // Dark backgrounds for pale items (walls, curtains) and magic items

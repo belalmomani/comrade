@@ -57,6 +57,12 @@ class GhostWindow(
         // Needs: food every hour, water every half hour (same for everyone)
         const val HUNGER_INTERVAL_MS = 60L * 60L * 1000L
         const val THIRST_INTERVAL_MS = 30L * 60L * 1000L
+
+        /** Babies drink their milk every two hours. */
+        const val MILK_INTERVAL_MS = 2L * 60L * 60L * 1000L
+
+        /** Every ghost asks for a bath every six hours. */
+        const val BATH_INTERVAL_MS = 6L * 60L * 60L * 1000L
         const val RETRY_MS = 5L * 60L * 1000L
         const val MIN_GAP_MS = 5L * 60L * 1000L
 
@@ -78,9 +84,19 @@ class GhostWindow(
     var meals = 0
 
     val widthPx: Int get() = Family.sizePx(BASE_WIDTH_DP, scale, density)
+
+    /** True for twins: one baby (one set of needs, one colour) shown as two bodies that act as one. */
+    var twin = false
+
+    /** Width of the whole window: wider for twins. */
+    val boxWidthPx: Int get() = if (twin) (widthPx * 1.8f).toInt() else widthPx
+    private var twinView: GhostView? = null
     val heightPx: Int get() = Family.sizePx(BASE_HEIGHT_DP, scale, density)
 
+    private val drinkIntervalMs: Long get() = if (id == "mother") THIRST_INTERVAL_MS else MILK_INTERVAL_MS
+
     var nextFoodAt = 0L
+    var nextBathAt = 0L
     var nextWaterAt = 0L
 
     /** The ghost does not ask again before this time (it still can be tapped to be cared for). */
@@ -185,7 +201,7 @@ class GhostWindow(
 
     private fun dp(v: Int): Int = (v * density).toInt()
 
-    fun rect(): Rect = Rect(restX, restY, restX + widthPx, restY + heightPx)
+    fun rect(): Rect = Rect(restX, restY, restX + boxWidthPx, restY + heightPx)
 
     fun setSavedPosition(x: Int, y: Int) {
         restX = x
@@ -205,12 +221,12 @@ class GhostWindow(
 
     /** A baby grows a little: resize keeping the bottom centre of the ghost where it is. */
     fun applyScale(newScale: Float) {
-        val oldW = widthPx
+        val oldW = boxWidthPx
         val oldH = heightPx
         scale = newScale
         feed?.mouthZoneScale = maxOf(0.8f, scale)
         val dm = context.resources.displayMetrics
-        val newX = (restX + (oldW - widthPx) / 2).coerceIn(0, maxOf(0, dm.widthPixels - widthPx))
+        val newX = (restX + (oldW - boxWidthPx) / 2).coerceIn(0, maxOf(0, dm.widthPixels - boxWidthPx))
         val newY = (restY + (oldH - heightPx)).coerceIn(0, maxOf(0, dm.heightPixels - heightPx))
         restX = newX
         restY = newY
@@ -218,7 +234,7 @@ class GhostWindow(
         if (p != null && !feeding) {
             p.x = restX
             p.y = restY
-            p.width = widthPx
+            p.width = boxWidthPx
             p.height = heightPx
             updateWindow()
         }
@@ -230,7 +246,7 @@ class GhostWindow(
         if (feeding) return
         moveAnimator?.cancel()
         val dm = context.resources.displayMetrics
-        val tx = x.coerceIn(0, maxOf(0, dm.widthPixels - widthPx))
+        val tx = x.coerceIn(0, maxOf(0, dm.widthPixels - boxWidthPx))
         val ty = y.coerceIn(0, maxOf(0, dm.heightPixels - heightPx))
         val sx = p.x
         val sy = p.y
@@ -281,7 +297,7 @@ class GhostWindow(
     fun show(x: Int, y: Int): Boolean {
         val dm = context.resources.displayMetrics
         val p = WindowManager.LayoutParams(
-            widthPx,
+            boxWidthPx,
             heightPx,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -289,7 +305,7 @@ class GhostWindow(
             PixelFormat.TRANSLUCENT
         )
         p.gravity = Gravity.TOP or Gravity.START
-        restX = x.coerceIn(0, maxOf(0, dm.widthPixels - widthPx))
+        restX = x.coerceIn(0, maxOf(0, dm.widthPixels - boxWidthPx))
         restY = y.coerceIn(0, maxOf(0, dm.heightPixels - heightPx))
         hasPosition = true
         p.x = restX
@@ -297,6 +313,7 @@ class GhostWindow(
 
         val g = GhostView(context)
         g.setBodyColor(if (colorIndex >= 0) Family.color(colorIndex) else null)
+        g.cryWhenThirsty = id != "mother" // babies cry while they ask for milk
         // Babies play differently from the big ghost
         g.playful = scale < 1f
         // Every baby has its own character; the big ghost has none
@@ -308,13 +325,23 @@ class GhostWindow(
         f.mouthZoneScale = maxOf(0.8f, scale)
         // The water cup has the baby's colour (the big ghost keeps the blue one)
         if (colorIndex >= 0) f.cupColor = Family.color(colorIndex)
+        f.milk = id != "mother" // babies drink milk from a bottle
         f.visibility = View.GONE
 
         val root = FrameLayout(context)
-        root.addView(
-            g,
-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-        )
+        if (twin) {
+            // The second twin only draws what the first one does, so they move and act as one
+            val t = GhostView(context)
+            t.mirrorOf = g
+            twinView = t
+            root.addView(g, FrameLayout.LayoutParams(widthPx, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP or Gravity.START))
+            root.addView(t, FrameLayout.LayoutParams(widthPx, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP or Gravity.END))
+        } else {
+            root.addView(
+                g,
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            )
+        }
         root.addView(
             f,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -322,6 +349,7 @@ class GhostWindow(
         ghost = g
         feed = f
         attachTouchHandling(g, p)
+        twinView?.setOnTouchListener { _, e -> g.dispatchTouchEvent(e) }
 
         return try {
             wm.addView(root, p)
@@ -353,6 +381,7 @@ class GhostWindow(
         rootView = null
         params = null
         feed = null
+        twinView = null
     }
 
     /** Fades the ghost out and removes the window, then calls [onDone]. */
@@ -487,7 +516,8 @@ class GhostWindow(
 
     private fun dueNeedInternal(now: Long, ignoreAskAfter: Boolean): Pair<FeedView.Mode, Long>? {
         if (nextFoodAt == 0L) nextFoodAt = now + HUNGER_INTERVAL_MS
-        if (nextWaterAt == 0L) nextWaterAt = now + THIRST_INTERVAL_MS
+        if (nextWaterAt == 0L) nextWaterAt = now + drinkIntervalMs
+        if (nextBathAt == 0L) nextBathAt = now + BATH_INTERVAL_MS
         if (!ignoreAskAfter && now < askAfter) return null
         val food = now >= nextFoodAt
         val water = now >= nextWaterAt
@@ -497,6 +527,7 @@ class GhostWindow(
                 else Pair(FeedView.Mode.WATER, nextWaterAt)
             food -> Pair(FeedView.Mode.FOOD, nextFoodAt)
             water -> Pair(FeedView.Mode.WATER, nextWaterAt)
+            now >= nextBathAt -> Pair(FeedView.Mode.BATH, nextBathAt)
             else -> null
         }
     }
@@ -531,6 +562,12 @@ class GhostWindow(
         lp.leftMargin = (restX - wx).coerceIn(0, maxOf(0, winW - widthPx))
         lp.topMargin = bubbleH
         ghost.layoutParams = lp
+        twinView?.let { t ->
+            val tl = FrameLayout.LayoutParams(widthPx, heightPx, Gravity.TOP or Gravity.START)
+            tl.leftMargin = (lp.leftMargin + (widthPx * 0.8f).toInt()).coerceAtMost(maxOf(0, winW - widthPx))
+            tl.topMargin = bubbleH
+            t.layoutParams = tl
+        }
 
         // Re-add the window so it is drawn and touched above the other ghosts
         try {
@@ -551,7 +588,11 @@ class GhostWindow(
         f.visibility = View.VISIBLE
         f.begin(winW, winH, bubbleH, trayH, mode)
         ghost.setFeedState(
-            if (mode == FeedView.Mode.FOOD) GhostView.FeedState.HUNGRY else GhostView.FeedState.THIRSTY
+            when (mode) {
+                FeedView.Mode.FOOD -> GhostView.FeedState.HUNGRY
+                FeedView.Mode.WATER -> GhostView.FeedState.THIRSTY
+                else -> GhostView.FeedState.NONE
+            }
         )
         handler.removeCallbacks(feedTimeout)
         handler.postDelayed(feedTimeout, FEED_TIMEOUT_MS)
@@ -577,12 +618,17 @@ class GhostWindow(
         if (p != null) {
             p.x = restX
             p.y = restY
-            p.width = widthPx
+            p.width = boxWidthPx
             p.height = heightPx
-            ghost.layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+            if (twin) {
+                ghost.layoutParams = FrameLayout.LayoutParams(widthPx, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP or Gravity.START)
+                twinView?.layoutParams = FrameLayout.LayoutParams(widthPx, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP or Gravity.END)
+            } else {
+                ghost.layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
             updateWindow()
         }
 
@@ -590,10 +636,11 @@ class GhostWindow(
         val now = System.currentTimeMillis()
         if (completed) {
             // This need is satisfied. Anything else that is still due stays due (neglect goes on).
-            if (mode == FeedView.Mode.WATER) {
-                nextWaterAt = now + THIRST_INTERVAL_MS
-            } else {
-                nextFoodAt = now + HUNGER_INTERVAL_MS
+            when (mode) {
+                FeedView.Mode.WATER -> nextWaterAt = now + drinkIntervalMs
+                FeedView.Mode.FOOD -> nextFoodAt = now + HUNGER_INTERVAL_MS
+                FeedView.Mode.BATH -> nextBathAt = now + BATH_INTERVAL_MS
+                else -> Unit // brushing teeth has no timer: it follows every meal
             }
             askAfter = now + MIN_GAP_MS
         } else {
