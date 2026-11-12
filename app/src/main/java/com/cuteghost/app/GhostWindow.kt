@@ -505,13 +505,15 @@ class GhostWindow(
     fun neglectLevel(now: Long): Int {
         if (nextFoodAt == 0L || nextWaterAt == 0L) return 0
         val elapsed = now - minOf(nextFoodAt, nextWaterAt)
-        return when {
+        val level = when {
             elapsed >= DEATH_AFTER_MS -> 4
             elapsed >= NEGLECT_GRACE_MS + SICK_AFTER_MS -> 3
             elapsed >= NEGLECT_GRACE_MS + CRY_AFTER_MS -> 2
             elapsed >= NEGLECT_GRACE_MS -> 1
             else -> 0
         }
+        // Gentle mode: a tear, then crying, but never sickness and never disappearing
+        return if (level > 2 && Gentle.isOn(context)) 2 else level
     }
 
     private fun dueNeedInternal(now: Long, ignoreAskAfter: Boolean): Pair<FeedView.Mode, Long>? {
