@@ -16,15 +16,22 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
+        <!-- The child's home screen is what opens first; the grown-ups' screen is behind its "للأهل" button -->
         <activity
-            android:name=".MainActivity"
+            android:name=".ChildHomeActivity"
             android:exported="true"
-            android:launchMode="singleTop">
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:launchMode="singleTop" />
 
         <activity
             android:name=".VillageActivity"
@@ -41,9 +48,28 @@
             android:exported="false"
             android:screenOrientation="portrait" />
 
+        <activity
+            android:name=".ParentActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <activity
+            android:name=".GoalsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
         <receiver
             android:name=".InstallResultReceiver"
             android:exported="false" />
+
+        <service
+            android:name=".ScreenLockService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Parent-chosen play time: keeps the phone on the games until the time ends or a parent ends it" />
+        </service>
 
         <service
             android:name=".GhostOverlayService"

@@ -60,6 +60,12 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.playButton).setOnClickListener {
             startActivity(Intent(this, PlaygroundActivity::class.java))
         }
+        findViewById<Button>(R.id.goalsButton).setOnClickListener {
+            startActivity(Intent(this, GoalsActivity::class.java))
+        }
+        findViewById<Button>(R.id.parentButton).setOnClickListener {
+            startActivity(Intent(this, ParentActivity::class.java))
+        }
         findViewById<Button>(R.id.houseButton).setOnClickListener {
             startActivity(Intent(this, HouseActivity::class.java))
         }
@@ -74,6 +80,10 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.neglectButton).setOnClickListener { testNeglect() }
         findViewById<Button>(R.id.seasonButton).setOnClickListener { testSeasonNow() }
         findViewById<Button>(R.id.peekButton).setOnClickListener { testSurprise(true) }
+        findViewById<android.widget.CheckBox>(R.id.gentleCheck).apply {
+            isChecked = Gentle.isOn(this@MainActivity)
+            setOnCheckedChangeListener { _, on -> Gentle.set(this@MainActivity, on) }
+        }
         findViewById<android.widget.CheckBox>(R.id.soundCheck).apply {
             isChecked = Sounds.enabled(this@MainActivity)
             setOnCheckedChangeListener { _, on -> Sounds.setEnabled(this@MainActivity, on) }

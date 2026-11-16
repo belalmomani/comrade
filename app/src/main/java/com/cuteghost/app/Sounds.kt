@@ -35,23 +35,34 @@ object Sounds {
         if (!on) stopLullaby()
     }
 
+    /** Spaced far apart on purpose: a sound is a small surprise, never a constant noise. */
     private fun gapMs(s: Snd): Long = when (s) {
-        Snd.GIGGLE -> 2200L
-        Snd.BOING -> 350L
-        Snd.CRY -> 4000L
-        Snd.CHEW -> 280L
-        Snd.GULP -> 500L
-        Snd.SPLASH -> 400L
-        Snd.SCRUB, Snd.BRUSH -> 220L
-        Snd.SPARKLE -> 700L
-        Snd.CHING, Snd.POP -> 120L
-        Snd.HONK -> 8_000L
-        Snd.SIREN -> 30_000L
-        Snd.CHIRP -> 6_000L
-        Snd.WHISTLE -> 2_500L
-        Snd.GRUMBLE -> 3_000L
-        Snd.LULLABY -> 60_000L
+        Snd.GIGGLE -> 30_000L
+        Snd.BOING -> 30_000L
+        Snd.CRY -> 60_000L
+        Snd.CHEW -> 900L
+        Snd.GULP -> 1_500L
+        Snd.SPLASH -> 1_500L
+        Snd.SCRUB, Snd.BRUSH -> 1_000L
+        Snd.SPARKLE -> 2_500L
+        Snd.CHING, Snd.POP -> 1_500L
+        Snd.HONK -> 120_000L
+        Snd.SIREN -> 300_000L
+        Snd.CHIRP -> 45_000L
+        Snd.WHISTLE -> 30_000L
+        Snd.GRUMBLE -> 30_000L
+        Snd.LULLABY -> 120_000L
     }
+
+    /** Sounds that nobody asked for (the ghost hopping, birds, cars...). They also share one long quiet gap. */
+    private fun ambient(s: Snd): Boolean = when (s) {
+        Snd.GIGGLE, Snd.BOING, Snd.CRY, Snd.CHIRP, Snd.HONK, Snd.SIREN, Snd.GRUMBLE, Snd.WHISTLE -> true
+        else -> false
+    }
+
+    private const val AMBIENT_GAP_MS = 20_000L
+    private const val FORCED_MIN_GAP_MS = 2_000L
+    private var lastAmbientAt = 0L
 
     // ---- making the sounds ----
 
@@ -206,16 +217,23 @@ object Sounds {
         }
     }
 
-    /** Plays a sound once (quiet, and not again too soon). */
+    /** Plays a sound once (very quiet, and not again too soon). */
     fun play(context: Context, s: Snd, force: Boolean = false) {
-        if (!enabled(context) || active >= 8) return
+        if (!enabled(context) || active >= 3) return
         val now = System.currentTimeMillis()
-        if (!force && now - (lastAt[s] ?: 0L) < gapMs(s)) return
+        val last = lastAt[s] ?: 0L
+        if (force) {
+            if (now - last < FORCED_MIN_GAP_MS) return
+        } else {
+            if (now - last < gapMs(s)) return
+            if (ambient(s) && now - lastAmbientAt < AMBIENT_GAP_MS) return
+        }
+        if (ambient(s)) lastAmbientAt = now
         lastAt[s] = now
         val pcm = data(s)
         val t = track(context, pcm) ?: return
         try {
-            t.setVolume(if (s == Snd.LULLABY) 0.45f else 0.8f)
+            t.setVolume(if (s == Snd.LULLABY) 0.15f else 0.3f)
             t.play()
             active++
             handler.postDelayed({
@@ -239,7 +257,7 @@ object Sounds {
         val t = track(context, pcm) ?: return
         try {
             t.setLoopPoints(0, pcm.size, -1)
-            t.setVolume(0.28f)
+            t.setVolume(0.12f)
             t.play()
             lullaby = t
         } catch (e: Exception) {

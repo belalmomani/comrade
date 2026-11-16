@@ -466,7 +466,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
                 .createNotificationChannel(channel)
         }
         val openApp = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
+            this, 0, Intent(this, ChildHomeActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -716,6 +716,16 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         } else if (completed && mode == FeedView.Mode.BATH) {
             HomeStore.addMaterials(this, 1)
             announceGifts(Wardrobe.addStars(this, 1))
+        }
+        if (completed) {
+            val goal = when (mode) {
+                FeedView.Mode.FOOD -> DailyGoals.Goal.FOOD
+                FeedView.Mode.WATER -> DailyGoals.Goal.WATER
+                FeedView.Mode.BATH -> DailyGoals.Goal.BATH
+                FeedView.Mode.BRUSH -> DailyGoals.Goal.BRUSH
+            }
+            val finishedDay = DailyGoals.record(this, goal)
+            if (finishedDay != null) announceDayComplete(finishedDay)
         }
         // After a meal the ghost brushes its teeth: the child rubs the brush at its mouth
         if (completed && mode == FeedView.Mode.FOOD) {
@@ -1565,6 +1575,13 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
 
     private fun giftText(items: List<Wardrobe.Item>): String =
         getString(R.string.notice_gift, items.joinToString("، ") { getString(it.nameRes) })
+
+    /** All the day's goals are done: a sticker and a small reward, shown a moment after the last action. */
+    private fun announceDayComplete(c: DailyGoals.Completion) {
+        var text = "أنجزتم كل أهداف اليوم! ملصق جديد وَ+${DailyGoals.REWARD_STARS} نجوم"
+        if (c.unlocked.isNotEmpty()) text += "\n" + giftText(c.unlocked)
+        handler.postDelayed({ if (!destroyed) notice?.show(text, 7_000L) }, 2_500L)
+    }
 
     private fun announceGifts(items: List<Wardrobe.Item>) {
         if (items.isEmpty()) return

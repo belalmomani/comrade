@@ -120,6 +120,22 @@
             android:textSize="18sp" />
 
         <Button
+            android:id="@+id/goalsButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="12dp"
+            android:text="@string/goals_open"
+            android:textSize="18sp" />
+
+        <Button
+            android:id="@+id/parentButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="12dp"
+            android:text="@string/parent_open"
+            android:textSize="18sp" />
+
+        <Button
             android:id="@+id/showButton"
             android:layout_width="match_parent"
             android:layout_height="56dp"
@@ -299,6 +315,13 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:text="@string/sound_on" />
+
+        <CheckBox
+            android:id="@+id/gentleCheck"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/gentle_mode" />
 
         <Button
             android:id="@+id/peekButton"
