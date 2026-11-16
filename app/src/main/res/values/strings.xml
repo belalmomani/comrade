@@ -183,4 +183,6 @@
     <string name="ad_test_mode">وضع تجربة الإعلانات: إعلان وهمي لاختبار المكافآت (لا يوجد مزوّد إعلانات حقيقي)</string>
     <string name="sound_on">الأصوات (ضحك ومضغ ونوم وأصوات القرية): هادئة ويمكن إيقافها</string>
     <string name="gentle_mode">الوضع اللطيف للصغار: إن أُهمل الشبح يبكي فقط، ولا يمرض ولا يختفي</string>
+    <string name="goals_open">أهداف اليوم</string>
+    <string name="parent_open">لوحة الأهل (الأهداف وقفل الهاتف)</string>
 </resources>

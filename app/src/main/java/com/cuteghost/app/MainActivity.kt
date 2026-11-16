@@ -60,6 +60,12 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.playButton).setOnClickListener {
             startActivity(Intent(this, PlaygroundActivity::class.java))
         }
+        findViewById<Button>(R.id.goalsButton).setOnClickListener {
+            startActivity(Intent(this, GoalsActivity::class.java))
+        }
+        findViewById<Button>(R.id.parentButton).setOnClickListener {
+            startActivity(Intent(this, ParentActivity::class.java))
+        }
         findViewById<Button>(R.id.houseButton).setOnClickListener {
             startActivity(Intent(this, HouseActivity::class.java))
         }

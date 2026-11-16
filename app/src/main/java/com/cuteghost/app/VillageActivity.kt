@@ -547,6 +547,7 @@ class VillageActivity : Activity() {
             2 -> if (Farm.water(this, i)) {
                 addFarmCoins(1, cx, ground)
                 Sounds.play(this, Snd.SPLASH, true)
+                farmGoalDone()
             }
             else -> {
                 val crop = Farm.harvest(this, i)
@@ -556,10 +557,23 @@ class VillageActivity : Activity() {
                     Sounds.play(this, Snd.SPARKLE, true)
                     farmer?.showFed()
                     Toast.makeText(this, "حصاد ${crop.name}! +${crop.coins} عملة و+${crop.stars} نجمة", Toast.LENGTH_SHORT).show()
+                    farmGoalDone()
                 }
             }
         }
         view.plots[i] = Farm.state(this, i)
+    }
+
+    /** Watering or harvesting counts for today's farm goal; the last goal of the day gives the reward. */
+    private fun farmGoalDone() {
+        val finished = DailyGoals.record(this, DailyGoals.Goal.FARM)
+        if (finished != null) {
+            Toast.makeText(
+                this,
+                "أنجزتم كل أهداف اليوم! ملصق جديد وَ+${DailyGoals.REWARD_STARS} نجوم",
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     private fun updateFarm(dt: Float, ground: Float) {
