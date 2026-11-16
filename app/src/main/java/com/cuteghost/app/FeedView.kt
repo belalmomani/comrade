@@ -265,10 +265,17 @@ class FeedView @JvmOverloads constructor(
         soundT -= dt
         if (soundT <= 0f && eatingNow) {
             when (mode) {
+<<<<<<< HEAD
                 Mode.FOOD -> { Sounds.play(context, Snd.CHEW); soundT = 1.3f }
                 Mode.WATER -> { Sounds.play(context, Snd.GULP); soundT = 1.8f }
                 Mode.BATH -> { Sounds.play(context, Snd.SCRUB); soundT = 1.2f }
                 Mode.BRUSH -> { Sounds.play(context, Snd.BRUSH); soundT = 1.2f }
+=======
+                Mode.FOOD -> { Sounds.play(context, Snd.CHEW); soundT = 0.45f }
+                Mode.WATER -> { Sounds.play(context, Snd.GULP); soundT = 0.7f }
+                Mode.BATH -> { Sounds.play(context, Snd.SCRUB); soundT = 0.35f }
+                Mode.BRUSH -> { Sounds.play(context, Snd.BRUSH); soundT = 0.3f }
+>>>>>>> branch 'main' of https://github.com/belalmomani/comrade.git
             }
         }
         if (fed && !fedHeard) {

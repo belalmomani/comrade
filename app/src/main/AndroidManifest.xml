@@ -29,11 +29,14 @@
         </activity>
 
         <activity
+<<<<<<< HEAD
             android:name=".MainActivity"
             android:exported="false"
             android:launchMode="singleTop" />
 
         <activity
+=======
+>>>>>>> branch 'main' of https://github.com/belalmomani/comrade.git
             android:name=".VillageActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
@@ -61,6 +64,28 @@
         <receiver
             android:name=".InstallResultReceiver"
             android:exported="false" />
+
+        <!-- Only used to turn the screen off when a parent starts rest time; it has no other policy -->
+        <receiver
+            android:name=".LockAdminReceiver"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".ScreenLockService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Parent-chosen rest time: covers the screen with a sleeping ghost until the time ends or a grown-up unlocks it" />
+        </service>
 
         <service
             android:name=".ScreenLockService"

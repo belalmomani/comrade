@@ -36,8 +36,13 @@ android {
         minSdk = 24
         targetSdk = 34
         // Increase both numbers with every update so Android installs it as an update.
+<<<<<<< HEAD
         versionCode = 38
         versionName = "5.3"
+=======
+        versionCode = 37
+        versionName = "5.2"
+>>>>>>> branch 'main' of https://github.com/belalmomani/comrade.git
         buildConfigField("String", "AI_KEYS", "\"$aiKeys\"")
         buildConfigField("String", "UPDATE_REPO", "\"$updateRepo\"")
     }
