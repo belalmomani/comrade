@@ -11,7 +11,9 @@ import android.graphics.Shader
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -77,7 +79,38 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
         /** The farm has four plots; this is the middle of plot [i] when the farm starts at slot [slot]. */
         fun plotCenterX(slot: Int, i: Int, d: Float): Float = (START_DP + SLOT_DP * slot + 38f + 70f * i) * d
         fun farmerHomeX(slot: Int, d: Float): Float = (START_DP + SLOT_DP * slot + 14f) * d
+
+        /** After the farm come the public buildings: the park, the toy shop and the school. */
+        const val CIVIC = 5
+        fun civicX(farmSlot: Int, i: Int, d: Float): Float = (START_DP + SLOT_DP * (farmSlot + 2 + i) + SLOT_DP / 2f) * d
+
+        /** The width of the whole village, in dp. */
+        fun worldWidthDp(farmSlot: Int): Float = START_DP * 2f + SLOT_DP * (farmSlot + 2 + CIVIC).toFloat()
     }
+
+    /** Today's hidden treasure: where it lies (world pixels, negative when there is none), what it is, and if it was found. */
+    val civicBuilt = BooleanArray(Civic.COUNT)
+    var civicToys = 0
+    private val civicPulse = FloatArray(Civic.COUNT)
+
+    /** The park swings faster, the school bell rings: something was just done there. */
+    fun civicPulseNow(i: Int) {
+        if (i in civicPulse.indices) civicPulse[i] = 3f
+    }
+
+    /** Which public building a touch (in world coordinates) is on, or -1. */
+    fun civicAt(x: Float, y: Float): Int {
+        val ground = height * GROUND
+        for (i in 0 until Civic.COUNT) {
+            if (abs(x - civicX(farmSlot, i, d)) < 58f * d && y in (ground - 120f * d)..(ground + 14f * d)) return i
+        }
+        return -1
+    }
+
+    var treasureX = -1f
+    var treasureKind = 0
+    var treasureFound = false
+    private var treasurePop = 0f
 
     val customers = ArrayList<Customer>()
     val fx = ArrayList<CoinFx>()
@@ -265,6 +298,8 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
             drawTables(canvas, ground)
         }
         withDepth(canvas, ground + 50f * d) { drawFarm(canvas, ground) }
+        if (treasureX >= 0f) withDepth(canvas, ground + 44f * d) { drawTreasure(canvas, ground) }
+        for (i in 0 until Civic.COUNT) withDepth(canvas, ground) { drawCivic(canvas, i, civicX(farmSlot, i, d), ground + 6f * d) }
 
         if (villagers.isEmpty()) {
             val cx = minOf(w, resources.displayMetrics.widthPixels.toFloat()) * 0.64f
@@ -352,6 +387,11 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
 
     /** Cars, buses, taxis and trucks drive in two lanes and stop at the red light; planes and birds cross the sky. */
     private fun stepLife(dt: Float) {
+        for (i in civicPulse.indices) if (civicPulse[i] > 0f) civicPulse[i] = (civicPulse[i] - dt).coerceAtLeast(0f)
+        if (treasurePop > 0f) {
+            treasurePop += dt
+            if (treasurePop > 1.4f) treasurePop = 0f
+        }
         val w = width.toFloat()
         val h = height.toFloat()
         if (w == 0f || h == 0f) return
@@ -1350,6 +1390,309 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
     }
 
     /** Touching the patrol car sounds its siren; touching an officer makes him blow the whistle and wave. */
+    // ------------------------------------------------------------ public buildings
+
+    private fun drawCivic(c: Canvas, i: Int, cx: Float, base: Float) {
+        if (!civicBuilt[i]) {
+            drawLot(c, i, cx, base)
+            return
+        }
+        when (i) {
+            Civic.PARK -> drawPark(c, cx, base)
+            Civic.TOYS -> drawToyShop(c, cx, base)
+            Civic.SCHOOL -> drawSchool(c, cx, base)
+            Civic.LIBRARY -> drawLibrary(c, cx, base)
+            else -> drawHospital(c, cx, base)
+        }
+    }
+
+    /** A fenced empty lot with a board: this is where the building will stand. */
+    private fun drawLot(c: Canvas, i: Int, cx: Float, base: Float) {
+        rr(c, cx - 50f * d, base - 8f * d, cx + 50f * d, base + 6f * d, 6f * d, Color.parseColor("#C9A27A"))
+        for (k in 0 until 5) {
+            val x = cx - 46f * d + k * 23f * d
+            rr(c, x, base - 30f * d, x + 5f * d, base - 4f * d, 1.5f * d, Color.parseColor("#9A6B3F"))
+        }
+        rr(c, cx - 46f * d, base - 24f * d, cx + 46f * d, base - 20f * d, 1.5f * d, Color.parseColor("#B5803F"))
+        val bob = abs(sin(clock * 3f + i)) * 4f * d
+        rr(c, cx - 3f * d, base - 74f * d - bob, cx + 3f * d, base - 8f * d, 1.5f * d, Color.parseColor("#8A5A2B"))
+        rr(c, cx - 28f * d, base - 98f * d - bob, cx + 28f * d, base - 62f * d - bob, 7f * d, Color.parseColor("#FFE08A"))
+        // on the board: a gold coin and a small picture of what will be built
+        f(Color.parseColor("#FFC93C"))
+        c.drawCircle(cx - 12f * d, base - 80f * d - bob, 8f * d, fill)
+        f(Color.parseColor("#FFF3B0"))
+        c.drawCircle(cx - 12f * d, base - 80f * d - bob, 4.5f * d, fill)
+        val color = when (i) {
+            Civic.PARK -> Color.parseColor("#3E9B4F")
+            Civic.TOYS -> Color.parseColor("#FF6B9A")
+            Civic.SCHOOL -> Color.parseColor("#E5584A")
+            Civic.LIBRARY -> Color.parseColor("#7C5CFF")
+            else -> Color.parseColor("#E5484D")
+        }
+        f(color)
+        c.drawCircle(cx + 12f * d, base - 80f * d - bob, 8f * d, fill)
+    }
+
+    private fun drawPark(c: Canvas, cx: Float, base: Float) {
+        val pulse = (civicPulse[Civic.PARK] / 3f).coerceIn(0f, 1f)
+        rr(c, cx - 62f * d, base - 10f * d, cx + 62f * d, base + 8f * d, 8f * d, Color.parseColor("#7ED08A"))
+        // a tree
+        rr(c, cx + 36f * d, base - 52f * d, cx + 43f * d, base - 8f * d, 2f * d, Color.parseColor("#8A5A2B"))
+        f(Color.parseColor("#3E9B4F"))
+        c.drawCircle(cx + 40f * d, base - 66f * d, 21f * d, fill)
+        c.drawCircle(cx + 28f * d, base - 54f * d, 14f * d, fill)
+        c.drawCircle(cx + 52f * d, base - 56f * d, 14f * d, fill)
+        // a bench
+        rr(c, cx - 58f * d, base - 24f * d, cx - 30f * d, base - 18f * d, 2f * d, Color.parseColor("#B5703A"))
+        rr(c, cx - 56f * d, base - 18f * d, cx - 52f * d, base - 8f * d, 1f * d, Color.parseColor("#8A5A2B"))
+        rr(c, cx - 36f * d, base - 18f * d, cx - 32f * d, base - 8f * d, 1f * d, Color.parseColor("#8A5A2B"))
+        // a swing that sways, and sways more after a play
+        val topY = base - 66f * d
+        line.color = Color.parseColor("#8A5A2B")
+        line.strokeWidth = 4f * d
+        c.drawLine(cx - 22f * d, topY, cx - 28f * d, base - 8f * d, line)
+        c.drawLine(cx + 2f * d, topY, cx + 8f * d, base - 8f * d, line)
+        rr(c, cx - 26f * d, topY - 3f * d, cx + 6f * d, topY + 1f * d, 2f * d, Color.parseColor("#8A5A2B"))
+        val angle = sin(clock * (1.5f + pulse * 2.5f)) * (0.25f + 0.5f * pulse)
+        val len = 36f * d
+        val sx = cx - 10f * d + sin(angle) * len
+        val sy = topY + cos(angle) * len
+        line.color = Color.parseColor("#5C4630")
+        line.strokeWidth = 1.6f * d
+        c.drawLine(cx - 16f * d, topY, sx - 6f * d, sy, line)
+        c.drawLine(cx - 4f * d, topY, sx + 6f * d, sy, line)
+        rr(c, sx - 9f * d, sy, sx + 9f * d, sy + 4f * d, 2f * d, Color.parseColor("#FF6B6B"))
+        // flowers
+        for (k in 0 until 5) {
+            f(if (k % 2 == 0) Color.parseColor("#FF8FB8") else Color.parseColor("#FFE066"))
+            c.drawCircle(cx - 20f * d + k * 11f * d, base + 1f * d, 2.6f * d, fill)
+        }
+        // butterflies after a play
+        if (pulse > 0f) {
+            for (k in 0 until 3) {
+                val bx = cx + sin(clock * 2f + k * 2.1f) * 50f * d
+                val by = base - 70f * d + sin(clock * 3f + k) * 14f * d
+                f(if (k == 1) Color.parseColor("#FF8FB8") else Color.parseColor("#7CC4FF"), (255f * pulse).toInt())
+                c.drawCircle(bx - 3f * d, by, 3.4f * d, fill)
+                c.drawCircle(bx + 3f * d, by, 3.4f * d, fill)
+            }
+        }
+    }
+
+    private fun drawToyShop(c: Canvas, cx: Float, base: Float) {
+        rr(c, cx - 46f * d, base - 70f * d, cx + 46f * d, base, 4f * d, Color.parseColor("#FF9EC4"))
+        // the striped awning
+        for (k in 0 until 6) {
+            val x = cx - 46f * d + k * (92f * d / 6f)
+            rr(c, x, base - 82f * d, x + 92f * d / 6f, base - 62f * d, 0f, if (k % 2 == 0) Color.parseColor("#E5484D") else Color.WHITE)
+            f(if (k % 2 == 0) Color.parseColor("#E5484D") else Color.WHITE)
+            c.drawCircle(x + 92f * d / 12f, base - 62f * d, 92f * d / 12f, fill)
+        }
+        // the window and the toys on its shelf
+        rr(c, cx - 38f * d, base - 54f * d, cx - 2f * d, base - 14f * d, 3f * d, Color.parseColor("#FFF6D6"))
+        rr(c, cx - 36f * d, base - 34f * d, cx - 4f * d, base - 32f * d, 1f * d, Color.parseColor("#B5803F"))
+        for (t in 0 until Civic.TOY_KINDS) {
+            if ((civicToys and (1 shl t)) == 0) continue
+            val tx = cx - 31f * d + (t % 3) * 11f * d
+            val ty = if (t < 3) base - 40f * d else base - 20f * d
+            when (t) {
+                0 -> { f(Color.parseColor("#E5484D")); c.drawCircle(tx, ty, 4.2f * d, fill) }
+                1 -> {
+                    f(Color.parseColor("#B5703A")); c.drawCircle(tx, ty, 4.2f * d, fill)
+                    c.drawCircle(tx - 3.2f * d, ty - 3.8f * d, 1.8f * d, fill); c.drawCircle(tx + 3.2f * d, ty - 3.8f * d, 1.8f * d, fill)
+                }
+                2 -> rr(c, tx - 4f * d, ty - 4f * d, tx + 4f * d, ty + 4f * d, 1f * d, Color.parseColor("#4DA3FF"))
+                3 -> {
+                    rr(c, tx - 5f * d, ty - 2.5f * d, tx + 5f * d, ty + 2f * d, 1.5f * d, Color.parseColor("#4CC38A"))
+                    f(Color.parseColor("#2B2540")); c.drawCircle(tx - 3f * d, ty + 2.5f * d, 1.8f * d, fill); c.drawCircle(tx + 3f * d, ty + 2.5f * d, 1.8f * d, fill)
+                }
+                4 -> {
+                    rr(c, tx - 3.5f * d, ty - 4f * d, tx + 3.5f * d, ty + 4f * d, 1f * d, Color.parseColor("#9AA5B1"))
+                    f(Color.WHITE); c.drawCircle(tx - 1.5f * d, ty - 1.5f * d, 1f * d, fill); c.drawCircle(tx + 1.5f * d, ty - 1.5f * d, 1f * d, fill)
+                }
+                else -> { f(Color.parseColor("#FFD43B")); c.drawCircle(tx, ty, 4.2f * d, fill); f(Color.parseColor("#FF8A2B")); c.drawCircle(tx + 4f * d, ty + 1f * d, 1.6f * d, fill) }
+            }
+        }
+        // the door and a gold star sign
+        rr(c, cx + 10f * d, base - 44f * d, cx + 34f * d, base, 3f * d, Color.parseColor("#8A5A2B"))
+        f(Color.parseColor("#FFD43B"))
+        c.drawCircle(cx + 29f * d, base - 22f * d, 1.8f * d, fill)
+        c.drawCircle(cx, base - 94f * d, 9f * d, fill)
+        f(Color.parseColor("#FFF3B0"))
+        c.drawCircle(cx, base - 94f * d, 4.5f * d, fill)
+    }
+
+    private fun drawLibrary(c: Canvas, cx: Float, base: Float) {
+        val pulse = (civicPulse[Civic.LIBRARY] / 3f).coerceIn(0f, 1f)
+        rr(c, cx - 48f * d, base - 66f * d, cx + 48f * d, base, 3f * d, Color.parseColor("#8E7CF0"))
+        rr(c, cx - 54f * d, base - 76f * d, cx + 54f * d, base - 62f * d, 3f * d, Color.parseColor("#5B49C9"))
+        // an open book on the roof
+        rr(c, cx - 20f * d, base - 96f * d, cx - 1f * d, base - 78f * d, 3f * d, Color.WHITE)
+        rr(c, cx + 1f * d, base - 96f * d, cx + 20f * d, base - 78f * d, 3f * d, Color.WHITE)
+        rr(c, cx - 1f * d, base - 96f * d, cx + 1f * d, base - 78f * d, 0f, Color.parseColor("#B8B0D8"))
+        // a round door and two windows full of books
+        rr(c, cx - 9f * d, base - 36f * d, cx + 9f * d, base, 9f * d, Color.parseColor("#FFD66B"))
+        rr(c, cx - 9f * d, base - 20f * d, cx + 9f * d, base, 2f * d, Color.parseColor("#FFD66B"))
+        for (side in 0 until 2) {
+            val l = if (side == 0) cx - 42f * d else cx + 20f * d
+            rr(c, l, base - 56f * d, l + 22f * d, base - 24f * d, 2f * d, Color.parseColor("#F4F1FF"))
+            for (k in 0 until 4) {
+                val bx = l + 2f * d + k * 5f * d
+                val colors = intArrayOf(Color.parseColor("#E5484D"), Color.parseColor("#4DA3FF"), Color.parseColor("#FFC93C"), Color.parseColor("#4CC38A"))
+                rr(c, bx, base - 52f * d, bx + 4f * d, base - 28f * d + (k % 2) * 2f * d, 1f * d, colors[k])
+            }
+        }
+        if (pulse > 0f) {
+            f(Color.parseColor("#FFC93C"), (255f * pulse).toInt())
+            c.drawCircle(cx + sin(clock * 5f) * 22f * d, base - 104f * d - (1f - pulse) * 12f * d, 3.2f * d, fill)
+            c.drawCircle(cx - sin(clock * 4f) * 26f * d, base - 108f * d - (1f - pulse) * 12f * d, 2.4f * d, fill)
+        }
+    }
+
+    private fun drawHospital(c: Canvas, cx: Float, base: Float) {
+        val pulse = (civicPulse[Civic.HOSPITAL] / 3f).coerceIn(0f, 1f)
+        rr(c, cx - 50f * d, base - 68f * d, cx + 50f * d, base, 3f * d, Color.WHITE)
+        rr(c, cx - 50f * d, base - 74f * d, cx + 50f * d, base - 66f * d, 2f * d, Color.parseColor("#E5484D"))
+        // the red cross
+        rr(c, cx - 5f * d, base - 62f * d, cx + 5f * d, base - 38f * d, 1.5f * d, Color.parseColor("#E5484D"))
+        rr(c, cx - 12f * d, base - 55f * d, cx + 12f * d, base - 45f * d, 1.5f * d, Color.parseColor("#E5484D"))
+        // glass door and windows
+        rr(c, cx - 11f * d, base - 30f * d, cx + 11f * d, base, 2f * d, Color.parseColor("#BFE8FF"))
+        rr(c, cx - 44f * d, base - 36f * d, cx - 24f * d, base - 14f * d, 2f * d, Color.parseColor("#BFE8FF"))
+        rr(c, cx + 24f * d, base - 36f * d, cx + 44f * d, base - 14f * d, 2f * d, Color.parseColor("#BFE8FF"))
+        // a light on the roof that blinks, faster after a visit
+        val blink = (sin(clock * (2f + pulse * 6f)) + 1f) / 2f
+        f(Color.parseColor("#E5484D"), (120f + 135f * blink).toInt())
+        c.drawCircle(cx, base - 80f * d, 6f * d, fill)
+    }
+
+    private fun drawSchool(c: Canvas, cx: Float, base: Float) {
+        val pulse = (civicPulse[Civic.SCHOOL] / 3f).coerceIn(0f, 1f)
+        rr(c, cx - 50f * d, base - 62f * d, cx + 50f * d, base, 3f * d, Color.parseColor("#FFD66B"))
+        path.reset()
+        path.moveTo(cx - 56f * d, base - 60f * d)
+        path.lineTo(cx, base - 92f * d)
+        path.lineTo(cx + 56f * d, base - 60f * d)
+        path.close()
+        f(Color.parseColor("#E5584A"))
+        c.drawPath(path, fill)
+        // a bell tower with a bell that swings after a visit
+        rr(c, cx - 9f * d, base - 112f * d, cx + 9f * d, base - 86f * d, 2f * d, Color.parseColor("#FFD66B"))
+        f(Color.parseColor("#E5584A"))
+        path.reset()
+        path.moveTo(cx - 12f * d, base - 112f * d)
+        path.lineTo(cx, base - 124f * d)
+        path.lineTo(cx + 12f * d, base - 112f * d)
+        path.close()
+        c.drawPath(path, fill)
+        f(Color.parseColor("#FFC93C"))
+        c.drawCircle(cx + sin(clock * 9f) * 3f * d * pulse, base - 100f * d, 5f * d, fill)
+        // door and windows
+        rr(c, cx - 9f * d, base - 34f * d, cx + 9f * d, base, 2f * d, Color.parseColor("#8A5A2B"))
+        rr(c, cx - 42f * d, base - 52f * d, cx - 20f * d, base - 30f * d, 2f * d, Color.parseColor("#BFE8FF"))
+        rr(c, cx + 20f * d, base - 52f * d, cx + 42f * d, base - 30f * d, 2f * d, Color.parseColor("#BFE8FF"))
+        // a flag
+        rr(c, cx + 52f * d, base - 96f * d, cx + 54f * d, base, 1f * d, Color.parseColor("#8A5A2B"))
+        val wave = sin(clock * 3f) * 3f * d
+        path.reset()
+        path.moveTo(cx + 54f * d, base - 96f * d)
+        path.lineTo(cx + 72f * d, base - 90f * d + wave)
+        path.lineTo(cx + 54f * d, base - 82f * d)
+        path.close()
+        f(Color.parseColor("#4DA3FF"))
+        c.drawPath(path, fill)
+    }
+
+    /** The treasure was just found: it pops out of the bush. */
+    fun treasureFoundNow() {
+        treasureFound = true
+        treasurePop = 0.01f
+    }
+
+    /** A touch (in the world's own coordinates) on the hidden treasure. */
+    fun tapTreasure(x: Float, y: Float): Boolean {
+        if (treasureX < 0f || treasureFound) return false
+        val ground = height * GROUND
+        return abs(x - treasureX) < 38f * d && y in (ground - 30f * d)..(ground + 90f * d)
+    }
+
+    private fun drawTreasureItem(c: Canvas, cx: Float, cy: Float, alpha: Int) {
+        when (treasureKind) {
+            0 -> { // a little chest
+                rr(c, cx - 13f * d, cy - 8f * d, cx + 13f * d, cy + 9f * d, 3f * d, Color.parseColor("#B5703A"))
+                rr(c, cx - 13f * d, cy - 8f * d, cx + 13f * d, cy - 1f * d, 3f * d, Color.parseColor("#D88C4A"))
+                rr(c, cx - 3f * d, cy - 3f * d, cx + 3f * d, cy + 4f * d, 1.5f * d, Color.parseColor("#FFD43B"))
+            }
+            1 -> { // a blue gem
+                path.reset()
+                path.moveTo(cx - 12f * d, cy - 4f * d)
+                path.lineTo(cx - 6f * d, cy - 11f * d)
+                path.lineTo(cx + 6f * d, cy - 11f * d)
+                path.lineTo(cx + 12f * d, cy - 4f * d)
+                path.lineTo(cx, cy + 12f * d)
+                path.close()
+                f(Color.parseColor("#4DA3FF"), alpha)
+                c.drawPath(path, fill)
+                f(Color.WHITE, alpha / 2)
+                c.drawCircle(cx - 4f * d, cy - 6f * d, 2.5f * d, fill)
+            }
+            else -> { // a golden star
+                path.reset()
+                for (i in 0 until 10) {
+                    val rad = if (i % 2 == 0) 13f * d else 5.5f * d
+                    val a = (-90f + i * 36f) * (PI.toFloat() / 180f)
+                    val px = cx + cos(a) * rad
+                    val py = cy + sin(a) * rad
+                    if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+                }
+                path.close()
+                f(Color.parseColor("#FFC93C"), alpha)
+                c.drawPath(path, fill)
+            }
+        }
+    }
+
+    /** A leafy bush; a little sparkle glitters now and then where today's treasure lies. */
+    private fun drawTreasure(c: Canvas, ground: Float) {
+        val x = treasureX
+        val y = ground + 44f * d
+        f(Color.BLACK, 45)
+        c.drawOval(RectF(x - 30f * d, y - 4f * d, x + 30f * d, y + 8f * d), fill)
+        f(Color.parseColor("#3E9B4F"))
+        c.drawCircle(x - 14f * d, y - 14f * d, 15f * d, fill)
+        c.drawCircle(x + 12f * d, y - 16f * d, 17f * d, fill)
+        c.drawCircle(x, y - 24f * d, 14f * d, fill)
+        f(Color.parseColor("#57B863"))
+        c.drawCircle(x - 6f * d, y - 22f * d, 9f * d, fill)
+
+        if (treasureFound) {
+            if (treasurePop > 0f) {
+                val k = treasurePop / 1.4f
+                drawTreasureItem(c, x, y - 30f * d - k * 46f * d, ((1f - k) * 255f).toInt().coerceIn(0, 255))
+            }
+            return
+        }
+        val tw = (sin(clock * 2.6f + 1f) + 1f) / 2f
+        if (tw > 0.5f) {
+            val sx = x + 8f * d
+            val sy = y - 36f * d
+            val big = 9f * d * tw
+            val small = 2.4f * d * tw
+            path.reset()
+            path.moveTo(sx, sy - big)
+            path.lineTo(sx + small, sy - small)
+            path.lineTo(sx + big, sy)
+            path.lineTo(sx + small, sy + small)
+            path.lineTo(sx, sy + big)
+            path.lineTo(sx - small, sy + small)
+            path.lineTo(sx - big, sy)
+            path.lineTo(sx - small, sy - small)
+            path.close()
+            f(Color.parseColor("#FFF3B0"), (255f * tw).toInt().coerceIn(0, 255))
+            c.drawPath(path, fill)
+        }
+    }
+
     fun tapPolice(x: Float, y: Float): Boolean {
         val ground = height * GROUND
         for (v in vehicles) {

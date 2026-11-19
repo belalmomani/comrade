@@ -33,7 +33,7 @@ object DailyGoals {
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    private fun dayNumber(): Int {
+    fun dayNumber(): Int {
         val now = System.currentTimeMillis()
         return ((now + TimeZone.getDefault().getOffset(now)) / 86_400_000L).toInt()
     }

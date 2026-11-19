@@ -138,9 +138,17 @@ class GhostWindow(
     var sleeping = false
         private set
 
+    /** In the evening and at night the ghost wears a sleeping cap. */
+    private fun nightNow(): Boolean {
+        val h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        return h >= Features.SLEEPY_EVENING_HOUR || h < Features.BEDTIME_END_HOUR
+    }
+
     private fun applyOutfitTo(g: GhostView) {
+        var hat = Wardrobe.equipped(context, Wardrobe.Slot.HAT)
+        if (nightNow() && hat !in 4..6) hat = 4
         g.setOutfit(
-            Wardrobe.equipped(context, Wardrobe.Slot.HAT),
+            hat,
             Wardrobe.equipped(context, Wardrobe.Slot.SCARF),
             Wardrobe.equipped(context, Wardrobe.Slot.WINGS),
             Wardrobe.equipped(context, Wardrobe.Slot.GLOW),

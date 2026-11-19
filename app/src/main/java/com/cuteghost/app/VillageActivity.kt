@@ -2,6 +2,7 @@ package com.cuteghost.app
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -138,12 +139,18 @@ class VillageActivity : Activity() {
         val dm = resources.displayMetrics
         val match = FrameLayout.LayoutParams.MATCH_PARENT
         farmSlot = maxOf(3, villagers.size + 2)
-        val worldW = maxOf(dm.widthPixels, dp(VillageView.START_DP * 2 + VillageView.SLOT_DP * (farmSlot + 2)))
+        val worldW = maxOf(dm.widthPixels, dp(VillageView.START_DP * 2 + VillageView.SLOT_DP * (farmSlot + 2 + VillageView.CIVIC)))
 
         view = VillageView(this, villagers)
         view.restaurantLevel = rLevel
         view.farmSlot = farmSlot
         view.onTap = { x, y -> handleTap(x, y) }
+        val worldDp = VillageView.worldWidthDp(farmSlot)
+        view.treasureX = Treasure.spotDp(50f, worldDp - 60f) * d
+        view.treasureKind = Treasure.kind()
+        view.treasureFound = Treasure.foundToday(this)
+        for (i in 0 until Civic.COUNT) view.civicBuilt[i] = Civic.built(this, i)
+        view.civicToys = Civic.toys(this)
         val scroll = HorizontalScrollView(this)
         scroll.isHorizontalScrollBarEnabled = false
         scrollView = scroll
@@ -666,6 +673,17 @@ class VillageActivity : Activity() {
         val y = ground + (rawY - ground) / depth
         // The patrol car and the officers answer a touch (siren, whistle, a wave)
         if (view.tapPolice(x, y)) return
+        // The public buildings
+        val civic = view.civicAt(x, y)
+        if (civic >= 0) {
+            if (Civic.built(this, civic)) useCivic(civic) else showCivicBuild(civic)
+            return
+        }
+        // Today's hidden treasure
+        if (view.tapTreasure(x, y)) {
+            findTreasure()
+            return
+        }
         // A customer waiting for his dish: touching him gives it to him
         for (cu in view.customers) {
             if (cu.state == Customer.READY && abs(x - cu.x) < 40f * d && y in (ground + 56f * d - 118f * d)..(ground + 56f * d + 8f * d)) {
@@ -692,6 +710,108 @@ class VillageActivity : Activity() {
                 return
             }
         }
+    }
+
+    // ---------------------------------------------------------------- the public buildings
+
+    private fun civicKind(id: Int): Int = when (id) {
+        Civic.PARK -> IconButtonView.PARK
+        Civic.TOYS -> IconButtonView.TOY_SHOP
+        Civic.SCHOOL -> IconButtonView.SCHOOL
+        Civic.LIBRARY -> IconButtonView.LIBRARY
+        else -> IconButtonView.HOSPITAL
+    }
+
+    private fun civicColor(id: Int): Int = when (id) {
+        Civic.PARK -> Color.parseColor("#3E9B4F")
+        Civic.TOYS -> Color.parseColor("#FF6B9A")
+        Civic.SCHOOL -> Color.parseColor("#E5584A")
+        Civic.LIBRARY -> Color.parseColor("#7C5CFF")
+        else -> Color.parseColor("#E5484D")
+    }
+
+    /** An empty lot: a big picture of the building, what it does, the coins needed and a green tick. */
+    private fun showCivicBuild(id: Int) {
+        val text = when (id) {
+            Civic.PARK -> "حديقة: أرجوحة ومقعد وزهور، واللعب فيها يعطي نجمة كل يوم"
+            Civic.TOYS -> "محل ألعاب: لعبة جديدة كل يوم تُوضع على الرف، مع بعض العملات"
+            Civic.SCHOOL -> "مدرسة: تفتح الألعاب الصغيرة (فقاعات وأشكال وألوان) وتعطي نجومًا"
+            Civic.LIBRARY -> "مكتبة: كتاب عدّ مصوّر، يعدّ الطفل الأشياء في كل صفحة ويحصل على نجوم"
+            else -> "مستشفى: يعالج الطفل شبحًا مريضًا بميزان الحرارة والدواء والقلب ويحصل على نجوم"
+        }
+        val content = LinearLayout(this)
+        content.orientation = LinearLayout.VERTICAL
+        content.gravity = Gravity.CENTER_HORIZONTAL
+        content.setPadding(dp(16), dp(12), dp(16), dp(10))
+        content.addView(IconButtonView(this, civicKind(id), civicColor(id)), LinearLayout.LayoutParams(dp(110), dp(110)))
+        val label = TextView(this)
+        label.text = text
+        label.textSize = 14f
+        label.gravity = Gravity.CENTER
+        label.setTextColor(Color.parseColor("#2B2540"))
+        content.addView(label)
+        val cost = Civic.cost(id)
+        val have = Village.coins(this)
+        content.addView(MeterView(this, 2, have, cost), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)))
+        val dialog = AlertDialog.Builder(this).setView(content).create()
+        val buttons = LinearLayout(this)
+        buttons.gravity = Gravity.CENTER
+        val check = icon(IconButtonView.CHECK, green, 74) {
+            if (Civic.build(this, id)) {
+                dialog.dismiss()
+                view.civicBuilt[id] = true
+                coinView.value = Village.coins(this)
+                Sounds.play(this, Snd.SPARKLE, true)
+                Toast.makeText(this, "تم البناء!", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "ينقصك ${cost - Village.coins(this)} عملة", Toast.LENGTH_LONG).show()
+            }
+        }
+        check.dimmed = have < cost
+        buttons.addView(check)
+        buttons.addView(icon(IconButtonView.CLOSE, red, 74) { dialog.dismiss() })
+        content.addView(buttons)
+        dialog.show()
+    }
+
+    /** What each building does when it is touched. */
+    private fun useCivic(id: Int) {
+        view.civicPulseNow(id)
+        when (id) {
+            Civic.PARK -> {
+                if (Civic.playInPark(this)) {
+                    Sounds.play(this, Snd.SPARKLE, true)
+                    Toast.makeText(this, "لعب الأشباح في الحديقة! نجمة جديدة", Toast.LENGTH_SHORT).show()
+                }
+            }
+            Civic.TOYS -> {
+                val toy = Civic.takeToy(this)
+                if (toy >= 0) {
+                    view.civicToys = Civic.toys(this)
+                    coinView.value = Village.coins(this)
+                    Sounds.play(this, Snd.CHING, true)
+                    Toast.makeText(this, "لعبة جديدة على الرف! +${Civic.TOY_COINS} عملات", Toast.LENGTH_SHORT).show()
+                }
+            }
+            Civic.SCHOOL -> startActivity(Intent(this, MiniGamesActivity::class.java))
+            Civic.LIBRARY -> startActivity(
+                Intent(this, MiniGameActivity::class.java).putExtra(MiniGameActivity.EXTRA_GAME, MiniGames.GAME_COUNTING)
+            )
+            else -> startActivity(
+                Intent(this, MiniGameActivity::class.java).putExtra(MiniGameActivity.EXTRA_GAME, MiniGames.GAME_DOCTOR)
+            )
+        }
+    }
+
+    /** The child found today's treasure: stars, coins and a brick of material, and a happy sparkle. */
+    private fun findTreasure() {
+        val unlocked = Treasure.find(this)
+        view.treasureFoundNow()
+        coinView.value = Village.coins(this)
+        Sounds.play(this, Snd.SPARKLE, true)
+        var text = "وجدتم كنز اليوم! +${Treasure.REWARD_COINS} عملة و+${Treasure.REWARD_STARS} نجوم"
+        if (unlocked.isNotEmpty()) text += "\nوفُتحت هدية جديدة في الخزانة!"
+        Toast.makeText(this, text, Toast.LENGTH_LONG).show()
     }
 
     private fun artColumn(houseId: Int, level: Int): LinearLayout {

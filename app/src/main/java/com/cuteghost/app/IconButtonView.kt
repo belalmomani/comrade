@@ -48,6 +48,12 @@ class IconButtonView(context: Context, private val kind: Int, private val color:
         const val REWARD_VIDEO = 25
         const val VIL_FARM = 26
         const val VIL_REST = 27
+        const val GAMES = 28
+        const val PARK = 29
+        const val TOY_SHOP = 30
+        const val SCHOOL = 31
+        const val LIBRARY = 32
+        const val HOSPITAL = 33
 
         fun forCategory(cat: FCat): Int = CAT_BED + cat.ordinal
     }
@@ -171,6 +177,69 @@ class IconButtonView(context: Context, private val kind: Int, private val color:
     private fun drawIcon(c: Canvas) {
         val white = Color.WHITE
         when (kind) {
+            PARK -> {
+                // a tree and a bench
+                f(white)
+                c.drawCircle(50f, 34f, 22f, fill)
+                c.drawCircle(34f, 48f, 15f, fill)
+                c.drawCircle(66f, 48f, 15f, fill)
+                rr(c, 46f, 50f, 54f, 76f, 2f, white)
+                rr(c, 20f, 78f, 80f, 86f, 3f, white)
+            }
+            TOY_SHOP -> {
+                // a teddy bear
+                f(white)
+                c.drawCircle(50f, 56f, 24f, fill)
+                c.drawCircle(32f, 30f, 10f, fill)
+                c.drawCircle(68f, 30f, 10f, fill)
+                c.drawCircle(50f, 38f, 18f, fill)
+                f(Color.parseColor("#B5703A"))
+                c.drawCircle(43f, 36f, 3f, fill)
+                c.drawCircle(57f, 36f, 3f, fill)
+                c.drawCircle(50f, 44f, 4f, fill)
+            }
+            LIBRARY -> {
+                // an open book
+                f(white)
+                rr(c, 16f, 30f, 48f, 76f, 4f, white)
+                rr(c, 52f, 30f, 84f, 76f, 4f, white)
+                rr(c, 47f, 32f, 53f, 78f, 2f, Color.parseColor("#B8B0D8"))
+                rr(c, 22f, 40f, 42f, 44f, 1f, Color.parseColor("#B8B0D8"))
+                rr(c, 22f, 50f, 42f, 54f, 1f, Color.parseColor("#B8B0D8"))
+                rr(c, 58f, 40f, 78f, 44f, 1f, Color.parseColor("#B8B0D8"))
+                rr(c, 58f, 50f, 78f, 54f, 1f, Color.parseColor("#B8B0D8"))
+            }
+            HOSPITAL -> {
+                // a building with a cross
+                f(white)
+                rr(c, 22f, 30f, 78f, 82f, 4f, white)
+                rr(c, 44f, 40f, 56f, 70f, 2f, Color.parseColor("#E5484D"))
+                rr(c, 35f, 49f, 65f, 61f, 2f, Color.parseColor("#E5484D"))
+            }
+            SCHOOL -> {
+                // a school with a flag
+                f(white)
+                rr(c, 24f, 46f, 76f, 82f, 3f, white)
+                path.reset()
+                path.moveTo(20f, 48f)
+                path.lineTo(50f, 22f)
+                path.lineTo(80f, 48f)
+                path.close()
+                c.drawPath(path, fill)
+                rr(c, 44f, 62f, 56f, 82f, 2f, Color.parseColor("#B8B0D8"))
+                rr(c, 49f, 8f, 51f, 24f, 1f, white)
+                rr(c, 51f, 8f, 63f, 15f, 1f, white)
+            }
+            GAMES -> {
+                // soap bubbles: the small games
+                f(white)
+                c.drawCircle(36f, 60f, 20f, fill)
+                c.drawCircle(66f, 36f, 14f, fill)
+                c.drawCircle(70f, 70f, 10f, fill)
+                f(Color.parseColor("#8B6CFF"))
+                c.drawCircle(30f, 53f, 5f, fill)
+                c.drawCircle(62f, 31f, 3.5f, fill)
+            }
             SHOP, CAT_BED -> {
                 rr(c, 12f, 56f, 88f, 78f, 5f, white)
                 rr(c, 8f, 38f, 22f, 78f, 4f, Color.parseColor("#FFE0F0"))

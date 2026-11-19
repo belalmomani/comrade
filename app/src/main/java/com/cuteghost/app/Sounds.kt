@@ -26,13 +26,35 @@ object Sounds {
     private var lullaby: AudioTrack? = null
     private var active = 0
 
-    fun enabled(context: Context): Boolean =
-        context.applicationContext.getSharedPreferences("ghost_prefs", Context.MODE_PRIVATE).getBoolean("sound_on", true)
+    const val LEVEL_OFF = 0
+    const val LEVEL_VERY_QUIET = 1
+    const val LEVEL_QUIET = 2
+
+    private fun prefs(context: Context) =
+        context.applicationContext.getSharedPreferences("ghost_prefs", Context.MODE_PRIVATE)
+
+    /** 0 = off, 1 = very quiet, 2 = quiet. Before this setting existed: on meant quiet. */
+    fun level(context: Context): Int {
+        val p = prefs(context)
+        return if (p.contains("sound_level")) {
+            p.getInt("sound_level", LEVEL_QUIET).coerceIn(LEVEL_OFF, LEVEL_QUIET)
+        } else if (p.getBoolean("sound_on", true)) {
+            LEVEL_QUIET
+        } else {
+            LEVEL_OFF
+        }
+    }
+
+    fun setLevel(context: Context, level: Int) {
+        val l = level.coerceIn(LEVEL_OFF, LEVEL_QUIET)
+        prefs(context).edit().putInt("sound_level", l).putBoolean("sound_on", l > LEVEL_OFF).apply()
+        if (l == LEVEL_OFF) stopLullaby()
+    }
+
+    fun enabled(context: Context): Boolean = level(context) > LEVEL_OFF
 
     fun setEnabled(context: Context, on: Boolean) {
-        context.applicationContext.getSharedPreferences("ghost_prefs", Context.MODE_PRIVATE)
-            .edit().putBoolean("sound_on", on).apply()
-        if (!on) stopLullaby()
+        if (!on) setLevel(context, LEVEL_OFF) else if (level(context) == LEVEL_OFF) setLevel(context, LEVEL_QUIET)
     }
 
     /** Spaced far apart on purpose: a sound is a small surprise, never a constant noise. */
@@ -233,7 +255,8 @@ object Sounds {
         val pcm = data(s)
         val t = track(context, pcm) ?: return
         try {
-            t.setVolume(if (s == Snd.LULLABY) 0.15f else 0.3f)
+            val veryQuiet = level(context) == LEVEL_VERY_QUIET
+            t.setVolume(if (s == Snd.LULLABY) (if (veryQuiet) 0.07f else 0.15f) else (if (veryQuiet) 0.12f else 0.3f))
             t.play()
             active++
             handler.postDelayed({
@@ -257,7 +280,7 @@ object Sounds {
         val t = track(context, pcm) ?: return
         try {
             t.setLoopPoints(0, pcm.size, -1)
-            t.setVolume(0.12f)
+            t.setVolume(if (level(context) == LEVEL_VERY_QUIET) 0.06f else 0.12f)
             t.play()
             lullaby = t
         } catch (e: Exception) {

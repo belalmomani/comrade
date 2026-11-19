@@ -66,6 +66,10 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         private const val KEY_NEXT_BATH = "next_bath"
         private const val KEY_LAST_MYSTERY = "last_mystery"
         private const val KEY_SEASON_DAY = "season_day"
+        private const val KEY_STRETCH_DAY = "stretch_day"
+        private const val SEASON_RAIN = 4
+        private const val RAIN_DURATION_MS = 8L * 60L * 1000L
+        private const val RAIN_HIDE_EVERY_MS = 9_000L
         private const val KEY_ALIVE = "last_alive_at"
 
         // Encouraging texts
@@ -251,6 +255,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
     private var waterFlag = false
     private var babyTotal = 0
     private var testSeason = 0
+    private var rainActive = false
     private var room: RoomWindow? = null
     private var bedtimeActive = false
     private val savedPos = HashMap<GhostWindow, Point>()
@@ -289,6 +294,8 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             checkVisitor()
             maybeSpeakPhrase()
             maybeStartSeason()
+            maybeMorningStretch()
+            maybeStartPlayTime()
             applyOutfitToAll()
             prefs().edit().putLong(KEY_ALIVE, nowWall).apply()
             handler.postDelayed(this, LOOP_MS)
@@ -388,7 +395,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         } else if (action == ACTION_NEGLECT_NOW) {
             testNeglectStep()
         } else if (action == ACTION_SEASON_NOW) {
-            testSeason = (testSeason + 1) % 4
+            testSeason = (testSeason + 1) % 5
             startSeason(testSeason, SEASON_TEST_MS)
         } else if (action == ACTION_OUTFIT) {
             applyOutfitToAll()
@@ -1394,19 +1401,69 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         val day = dayNumber()
         if (prefs().getInt(KEY_SEASON_DAY, -1) == day) return
         prefs().edit().putInt(KEY_SEASON_DAY, day).apply()
-        startSeason(day % 4, SEASON_DURATION_MS) // winter, spring, summer, autumn, one per day
+        if (day % 5 == 2) {
+            startSeason(SEASON_RAIN, RAIN_DURATION_MS) // a rainy day every few days: the ghosts hide
+        } else {
+            startSeason(day % 4, SEASON_DURATION_MS) // winter, spring, summer, autumn, one per day
+        }
+    }
+
+    /** The parents' daily schedule: when its time comes, play time starts by itself. */
+    private fun maybeStartPlayTime() {
+        if (!ScreenLock.scheduleDue(this)) return
+        if (!Settings.canDrawOverlays(this)) return
+        ScreenLock.markScheduleStarted(this)
+        try {
+            ScreenLock.start(this, ScreenLock.scheduleLength(this))
+        } catch (e: RuntimeException) {
+            // it will be tried again tomorrow
+        }
+    }
+
+    /** Once a day, in the morning, the ghosts stretch and yawn. */
+    private fun maybeMorningStretch() {
+        if (bedtimeActive || activeSession != null) return
+        val h = hourNow()
+        if (h < Features.BEDTIME_END_HOUR || h >= 11) return
+        if (System.currentTimeMillis() - serviceStartedAt < 6_000L) return
+        val day = dayNumber()
+        if (prefs().getInt(KEY_STRETCH_DAY, -1) == day) return
+        val list = shownGhosts()
+        if (list.isEmpty()) return
+        prefs().edit().putInt(KEY_STRETCH_DAY, day).apply()
+        for (w in list) w.ghost.stretch()
+    }
+
+    /** While it rains the ghosts duck and hide every few seconds. */
+    private val rainLoop = object : Runnable {
+        override fun run() {
+            if (destroyed || !rainActive) return
+            for (w in shownGhosts()) w.ghost.hideFromRain()
+            handler.postDelayed(this, RAIN_HIDE_EVERY_MS)
+        }
     }
 
     private fun startSeason(season: Int, durationMs: Long) {
         val wm = windowManager ?: return
         seasonWindow?.remove()
         val sw = SeasonWindow(this, wm)
-        val ok = sw.show(season, durationMs) { seasonWindow = null }
+        val ok = sw.show(season, durationMs) {
+            seasonWindow = null
+            rainActive = false
+        }
         if (ok) {
             seasonWindow = sw
-            val messages = resources.getStringArray(R.array.season_messages)
-            if (season in messages.indices) notice?.show(messages[season], 6_000L)
-            showCuriousAll(if (Random.nextBoolean()) 0 else resources.displayMetrics.widthPixels)
+            if (season == SEASON_RAIN) {
+                notice?.show(getString(R.string.rain_message), 6_000L)
+                rainActive = true
+                handler.removeCallbacks(rainLoop)
+                handler.postDelayed(rainLoop, 2_500L)
+            } else {
+                rainActive = false
+                val messages = resources.getStringArray(R.array.season_messages)
+                if (season in messages.indices) notice?.show(messages[season], 6_000L)
+                showCuriousAll(if (Random.nextBoolean()) 0 else resources.displayMetrics.widthPixels)
+            }
         }
     }
 

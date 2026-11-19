@@ -47,7 +47,8 @@ class GhostView @JvmOverloads constructor(
     private enum class TapAnim {
         HOP, DOUBLE_HOP, WIGGLE_HOP, REBOUND, LEAN, SHAKE,
         SPIN, TRIPLE_BOUNCE, DANCE, PEEK, // baby play
-        HIDE, LAUGH, HEAD_PAT
+        HIDE, LAUGH, HEAD_PAT,
+        STRETCH // morning: it stretches up and yawns
     }
 
     companion object {
@@ -738,6 +739,20 @@ class GhostView @JvmOverloads constructor(
         if (tapAnim == null) startTapAnim(TapAnim.HOP)
     }
 
+    /** The morning stretch and yawn (once a day, when the day starts). */
+    fun stretch() {
+        if (feedState != FeedState.NONE || dragging || tapAnim != null || forcedSleep) return
+        setOverride(Mood.RELAXED, 3.0f)
+        startTapAnim(TapAnim.STRETCH)
+    }
+
+    /** It is raining: the ghost ducks and hides for a moment. */
+    fun hideFromRain() {
+        if (feedState != FeedState.NONE || dragging || tapAnim != null || forcedSleep) return
+        startTapAnim(TapAnim.HIDE)
+        setOverride(Mood.SHY, 2.0f)
+    }
+
     /** A happy little hop (babies playing by themselves). */
     fun hopHappy() {
         if (feedState != FeedState.NONE || dragging) return
@@ -1082,6 +1097,7 @@ class GhostView @JvmOverloads constructor(
             TapAnim.HIDE -> 1.6f
             TapAnim.LAUGH -> 1.4f
             TapAnim.HEAD_PAT -> 1.6f
+            TapAnim.STRETCH -> 2.6f
         }
         tapJitter = 0.9f + Random.nextFloat() * 0.2f
         tapDir = if (Random.nextBoolean()) 1f else -1f
@@ -1155,6 +1171,12 @@ class GhostView @JvmOverloads constructor(
                     hop(v, 16f * j)
                     jumpY += 12f * (1f - smooth(v * 2.5f))
                 }
+            }
+            // Morning stretch: it grows tall slowly, holds, and relaxes with a little wiggle
+            TapAnim.STRETCH -> {
+                val e = sin(PI_F * u)
+                jumpSq = -0.2f * e
+                tapRot = sin(u * PI_F * 4f) * 2.5f * e
             }
             // Hiding: it shrinks down, stays hidden for a moment, then pops back
             TapAnim.HIDE -> {

@@ -75,6 +75,7 @@ class SeasonView(context: Context) : View(context) {
             0 -> 45
             1 -> 26
             2 -> 14
+            4 -> 70
             else -> 24
         }
         for (i in 0 until count) resetParticle(i, true)
@@ -131,6 +132,12 @@ class SeasonView(context: Context) : View(context) {
                 rotSpeed[i] = 0f
                 py[i] = Random.nextFloat() * 0.6f
             }
+            4 -> { // rain: fast, almost straight drops
+                speed[i] = 0.55f + Random.nextFloat() * 0.35f
+                size[i] = 8f + Random.nextFloat() * 6f
+                sway[i] = 0f
+                rotSpeed[i] = 0f
+            }
             else -> { // leaves
                 speed[i] = 0.05f + Random.nextFloat() * 0.06f
                 size[i] = 7f + Random.nextFloat() * 5f
@@ -155,6 +162,10 @@ class SeasonView(context: Context) : View(context) {
         val h = height.toFloat()
         if (season == 2) {
             drawSun(canvas, w)
+            return
+        }
+        if (season == 4) {
+            drawRain(canvas, w, h)
             return
         }
         for (i in 0 until count) {
@@ -199,6 +210,27 @@ class SeasonView(context: Context) : View(context) {
                     canvas.restoreToCount(s)
                 }
             }
+        }
+    }
+
+    /** A grey tint, a row of clouds at the top and falling drops. */
+    private fun drawRain(canvas: Canvas, w: Float, h: Float) {
+        fill.style = Paint.Style.FILL
+        fill.color = Color.parseColor("#22405070")
+        canvas.drawRect(0f, 0f, w, h, fill)
+        fill.color = Color.parseColor("#CC8A97A8")
+        for (k in 0 until 4) {
+            val cx = w * (0.1f + 0.27f * k) + sin(clock * 0.3f + k) * 10f * d
+            rect.set(cx - 70f * d, 14f * d, cx + 70f * d, 62f * d)
+            canvas.drawOval(rect, fill)
+        }
+        line.color = Color.parseColor("#9CCBFF")
+        line.alpha = 170
+        line.strokeWidth = 1.6f * d
+        for (i in 0 until count) {
+            val x = px[i] * w
+            val y = py[i] * h
+            canvas.drawLine(x, y, x - 3f * d, y + size[i] * d * 1.6f, line)
         }
     }
 
