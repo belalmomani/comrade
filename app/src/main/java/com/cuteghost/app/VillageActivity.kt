@@ -735,7 +735,7 @@ class VillageActivity : Activity() {
         val text = when (id) {
             Civic.PARK -> "حديقة: أرجوحة ومقعد وزهور، واللعب فيها يعطي نجمة كل يوم"
             Civic.TOYS -> "محل ألعاب: لعبة جديدة كل يوم تُوضع على الرف، مع بعض العملات"
-            Civic.SCHOOL -> "مدرسة: تفتح الألعاب الصغيرة (فقاعات وأشكال وألوان) وتعطي نجومًا"
+            Civic.SCHOOL -> "مدرسة: أستاذ وطلاب! يرسم الأستاذ شكلًا على السبورة، ويلمس الطفل الطالب الذي معه الشكل نفسه"
             Civic.LIBRARY -> "مكتبة: كتاب عدّ مصوّر، يعدّ الطفل الأشياء في كل صفحة ويحصل على نجوم"
             else -> "مستشفى: يعالج الطفل شبحًا مريضًا بميزان الحرارة والدواء والقلب ويحصل على نجوم"
         }
@@ -793,7 +793,9 @@ class VillageActivity : Activity() {
                     Toast.makeText(this, "لعبة جديدة على الرف! +${Civic.TOY_COINS} عملات", Toast.LENGTH_SHORT).show()
                 }
             }
-            Civic.SCHOOL -> startActivity(Intent(this, MiniGamesActivity::class.java))
+            Civic.SCHOOL -> startActivity(
+                Intent(this, MiniGameActivity::class.java).putExtra(MiniGameActivity.EXTRA_GAME, MiniGames.GAME_CLASS)
+            )
             Civic.LIBRARY -> startActivity(
                 Intent(this, MiniGameActivity::class.java).putExtra(MiniGameActivity.EXTRA_GAME, MiniGames.GAME_COUNTING)
             )

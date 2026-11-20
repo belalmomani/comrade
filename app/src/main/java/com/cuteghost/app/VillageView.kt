@@ -1601,6 +1601,66 @@ class VillageView(context: Context, private val villagers: List<Villager>) : Vie
         path.close()
         f(Color.parseColor("#4DA3FF"))
         c.drawPath(path, fill)
+        // the teacher by the door and the pupils in front of the school (they hop when the bell rings)
+        val hopPower = 2f + 6f * pulse
+        drawKid(c, cx - 38f * d, base + 12f * d, 0.55f, Color.parseColor("#FF9EC4"), Color.parseColor("#4DA3FF"), abs(sin(clock * 2.2f)) * hopPower * d)
+        drawKid(c, cx - 22f * d, base + 14f * d, 0.5f, Color.parseColor("#B8E0FF"), Color.parseColor("#E5484D"), abs(sin(clock * 2.2f + 2f)) * hopPower * d)
+        drawKid(c, cx + 42f * d, base + 12f * d, 0.55f, Color.parseColor("#D9F5C9"), Color.parseColor("#FFC93C"), abs(sin(clock * 2.2f + 4f)) * hopPower * d)
+        drawTeacher(c, cx + 20f * d, base + 14f * d, pulse)
+    }
+
+    /** A little pupil: a small ghost with a school bag on its back. */
+    private fun drawKid(c: Canvas, x: Float, foot: Float, s: Float, body: Int, pack: Int, hop: Float) {
+        val u = s * d
+        val y = foot - hop
+        f(Color.BLACK, 40)
+        c.drawOval(RectF(x - 11f * u, foot - 2f * u, x + 11f * u, foot + 3f * u), fill)
+        rr(c, x + 6f * u, y - 24f * u, x + 15f * u, y - 8f * u, 3f * u, pack)
+        rr(c, x - 11f * u, y - 34f * u, x + 11f * u, y - 2f * u, 11f * u, body)
+        f(Color.parseColor("#2B2540"))
+        c.drawCircle(x - 4f * u, y - 22f * u, 1.8f * u, fill)
+        c.drawCircle(x + 4f * u, y - 22f * u, 1.8f * u, fill)
+        f(Color.parseColor("#FFB6D5"))
+        c.drawCircle(x - 7f * u, y - 17f * u, 2f * u, fill)
+        c.drawCircle(x + 7f * u, y - 17f * u, 2f * u, fill)
+    }
+
+    /** The teacher: a bigger ghost with glasses, a graduation cap and a pointer. */
+    private fun drawTeacher(c: Canvas, x: Float, foot: Float, pulse: Float) {
+        val u = d
+        val dark = Color.parseColor("#2B2540")
+        f(Color.BLACK, 40)
+        c.drawOval(RectF(x - 15f * u, foot - 2f * u, x + 15f * u, foot + 3f * u), fill)
+        rr(c, x - 14f * u, foot - 46f * u, x + 14f * u, foot - 2f * u, 14f * u, Color.parseColor("#F7F4FF"))
+        rr(c, x - 12f * u, foot - 26f * u, x + 12f * u, foot - 21f * u, 2f * u, Color.parseColor("#E5584A"))
+        f(dark)
+        c.drawCircle(x - 5.5f * u, foot - 33f * u, 1.8f * u, fill)
+        c.drawCircle(x + 5.5f * u, foot - 33f * u, 1.8f * u, fill)
+        line.color = dark
+        line.strokeWidth = 1.2f * u
+        c.drawCircle(x - 5.5f * u, foot - 33f * u, 4.6f * u, line)
+        c.drawCircle(x + 5.5f * u, foot - 33f * u, 4.6f * u, line)
+        c.drawLine(x - 1f * u, foot - 33f * u, x + 1f * u, foot - 33f * u, line)
+        line.strokeWidth = 1.4f * u
+        rect.set(x - 4f * u, foot - 30f * u, x + 4f * u, foot - 24f * u)
+        c.drawArc(rect, 20f, 140f, false, line)
+        path.reset()
+        path.moveTo(x - 17f * u, foot - 47f * u)
+        path.lineTo(x, foot - 53f * u)
+        path.lineTo(x + 17f * u, foot - 47f * u)
+        path.lineTo(x, foot - 41f * u)
+        path.close()
+        f(dark)
+        c.drawPath(path, fill)
+        rr(c, x - 9f * u, foot - 46f * u, x + 9f * u, foot - 40f * u, 2f * u, dark)
+        line.color = Color.parseColor("#FFC93C")
+        line.strokeWidth = 1.4f * u
+        c.drawLine(x + 15f * u, foot - 47f * u, x + 15f * u, foot - 38f * u, line)
+        f(Color.parseColor("#FFC93C"))
+        c.drawCircle(x + 15f * u, foot - 37f * u, 2f * u, fill)
+        line.color = Color.parseColor("#8A5A2B")
+        line.strokeWidth = 2f * u
+        c.drawLine(x + 12f * u, foot - 20f * u, x + 28f * u, foot - 38f * u + sin(clock * 9f) * 4f * u * pulse, line)
     }
 
     /** The treasure was just found: it pops out of the bush. */
