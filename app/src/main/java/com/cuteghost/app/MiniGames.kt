@@ -39,6 +39,11 @@ object MiniGames {
     const val GAME_COUNTING = 3
     const val GAME_DOCTOR = 4
     const val GAME_CLASS = 5
+    const val GAME_GHOST_BUBBLES = 6
+    const val GAME_BUTTERFLY = 7
+    const val GAME_BALL = 8
+    const val GAME_WHICH = 9
+    const val GAME_TWINS = 10
 
     private const val PREFS = "ghost_goals"
     private const val KEY_DAY = "mg_day"
@@ -75,6 +80,37 @@ object MiniGames {
     fun setBubblesStage(context: Context, stage: Int) {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putInt("bubbles_stage", stage.coerceIn(0, BUBBLE_STAGES - 1)).apply()
+    }
+
+    /** The butterfly game has two stages (two butterflies, then three); the twins game has four. */
+    const val BUTTERFLY_STAGES = 2
+    const val TWINS_STAGES = 4
+
+    private fun stageOf(context: Context, key: String, max: Int): Int =
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(key, 0).coerceIn(0, max - 1)
+
+    private fun setStageOf(context: Context, key: String, value: Int, max: Int) {
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putInt(key, value.coerceIn(0, max - 1)).apply()
+    }
+
+    fun butterflyStage(context: Context): Int = stageOf(context, "butterfly_stage", BUTTERFLY_STAGES)
+    fun setButterflyStage(context: Context, stage: Int) = setStageOf(context, "butterfly_stage", stage, BUTTERFLY_STAGES)
+    fun twinsStage(context: Context): Int = stageOf(context, "twins_stage", TWINS_STAGES)
+    fun setTwinsStage(context: Context, stage: Int) = setStageOf(context, "twins_stage", stage, TWINS_STAGES)
+
+    /** At most this many golden-bubble stars a day. */
+    const val DAILY_GOLD_CAP = 5
+
+    /** A golden bubble was popped: one star, which counts like any star for the village and wardrobe purchases. */
+    fun goldenStar(context: Context): Boolean {
+        val p = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val today = DailyGoals.dayNumber()
+        val n = if (p.getInt("gold_day", -1) == today) p.getInt("gold_count", 0) else 0
+        if (n >= DAILY_GOLD_CAP) return false
+        p.edit().putInt("gold_day", today).putInt("gold_count", n + 1).apply()
+        Wardrobe.addStars(context, 1)
+        return true
     }
 
     /** The classroom has three stages: two pupils, then three, then four. */
@@ -313,6 +349,7 @@ private abstract class GameView(context: Context) : View(context) {
     protected val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     protected var clock = 0f
     var onRound: (() -> Unit)? = null
+    var onStar: (() -> Unit)? = null
 
     private var last = 0L
     private var running = false
@@ -1218,6 +1255,843 @@ private class ClassroomView(context: Context) : GameView(context) {
     }
 }
 
+// ============================================================ more drawings
+
+private val ballClip = Path()
+
+private fun drawButterfly(c: Canvas, p: Paint, x: Float, y: Float, s: Float, color: Int, flap: Float) {
+    val w = abs(sin(flap)) * s * 0.9f + s * 0.12f
+    p.style = Paint.Style.FILL
+    p.color = color
+    helperRect.set(x - w, y - s * 0.8f, x - 0.05f * s, y + s * 0.1f)
+    c.drawOval(helperRect, p)
+    helperRect.set(x + 0.05f * s, y - s * 0.8f, x + w, y + s * 0.1f)
+    c.drawOval(helperRect, p)
+    helperRect.set(x - w * 0.8f, y - s * 0.05f, x - 0.05f * s, y + s * 0.7f)
+    c.drawOval(helperRect, p)
+    helperRect.set(x + 0.05f * s, y - s * 0.05f, x + w * 0.8f, y + s * 0.7f)
+    c.drawOval(helperRect, p)
+    p.color = Color.argb(150, 255, 255, 255)
+    c.drawCircle(x - w * 0.5f, y - s * 0.35f, s * 0.12f, p)
+    c.drawCircle(x + w * 0.5f, y - s * 0.35f, s * 0.12f, p)
+    p.color = Color.parseColor("#2B2540")
+    helperRect.set(x - s * 0.06f, y - s * 0.55f, x + s * 0.06f, y + s * 0.55f)
+    c.drawRoundRect(helperRect, s * 0.06f, s * 0.06f, p)
+    p.style = Paint.Style.STROKE
+    p.strokeWidth = s * 0.04f
+    p.strokeCap = Paint.Cap.ROUND
+    c.drawLine(x, y - s * 0.55f, x - s * 0.2f, y - s * 0.82f, p)
+    c.drawLine(x, y - s * 0.55f, x + s * 0.2f, y - s * 0.82f, p)
+    p.style = Paint.Style.FILL
+}
+
+/** Four kinds of ball: 0 spotted, 1 beach ball, 2 football, 3 striped. */
+private fun drawBall(c: Canvas, p: Paint, type: Int, cx: Float, cy: Float, r: Float, colorIndex: Int, angle: Float) {
+    p.style = Paint.Style.FILL
+    when (type) {
+        0 -> {
+            p.color = PALETTE[colorIndex % 4]
+            c.drawCircle(cx, cy, r, p)
+            p.color = Color.WHITE
+            for (k in 0 until 4) {
+                val a = (angle + k * 90f + 45f) * (PI.toFloat() / 180f)
+                c.drawCircle(cx + cos(a) * r * 0.55f, cy + sin(a) * r * 0.55f, r * 0.16f, p)
+            }
+        }
+        1 -> {
+            helperRect.set(cx - r, cy - r, cx + r, cy + r)
+            for (k in 0 until 4) {
+                p.color = PALETTE[(k + colorIndex) % 4]
+                c.drawArc(helperRect, angle + k * 90f, 90f, true, p)
+            }
+            p.color = Color.WHITE
+            c.drawCircle(cx, cy, r * 0.16f, p)
+        }
+        2 -> {
+            p.color = Color.WHITE
+            c.drawCircle(cx, cy, r, p)
+            p.color = Color.parseColor("#2B2540")
+            helperPath.reset()
+            for (k in 0 until 5) {
+                val a = (angle - 90f + k * 72f) * (PI.toFloat() / 180f)
+                val x = cx + cos(a) * r * 0.38f
+                val y = cy + sin(a) * r * 0.38f
+                if (k == 0) helperPath.moveTo(x, y) else helperPath.lineTo(x, y)
+            }
+            helperPath.close()
+            c.drawPath(helperPath, p)
+            for (k in 0 until 5) {
+                val a = (angle - 90f + k * 72f) * (PI.toFloat() / 180f)
+                c.drawCircle(cx + cos(a) * r * 0.82f, cy + sin(a) * r * 0.82f, r * 0.1f, p)
+            }
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = r * 0.06f
+            p.color = Color.parseColor("#B8B0D8")
+            c.drawCircle(cx, cy, r, p)
+            p.style = Paint.Style.FILL
+        }
+        else -> {
+            p.color = PALETTE[colorIndex % 4]
+            c.drawCircle(cx, cy, r, p)
+            ballClip.reset()
+            ballClip.addCircle(cx, cy, r, Path.Direction.CW)
+            c.save()
+            c.clipPath(ballClip)
+            c.rotate(angle, cx, cy)
+            p.color = Color.WHITE
+            helperRect.set(cx - r, cy - r * 0.45f, cx + r, cy - r * 0.15f)
+            c.drawRect(helperRect, p)
+            helperRect.set(cx - r, cy + r * 0.15f, cx + r, cy + r * 0.45f)
+            c.drawRect(helperRect, p)
+            c.restore()
+        }
+    }
+    p.color = Color.argb(120, 255, 255, 255)
+    c.drawCircle(cx - r * 0.4f, cy - r * 0.4f, r * 0.14f, p)
+}
+
+/** A picture for the twins game: 0 to 3 are the book things, 4 to 7 are the shapes. */
+private fun drawPicture(c: Canvas, p: Paint, kind: Int, x: Float, y: Float, r: Float, d: Float) {
+    if (kind < 4) drawBookItem(c, p, kind, x, y, r) else drawShape(c, p, kind - 4, x, y, r, PALETTE[kind - 4], false, d)
+}
+
+// ============================================================ game 7: the ghost's bubbles
+
+/** The ghost blows bubbles into the air and the child pops them. Now and then a golden one with a star comes. */
+private class GhostBubblesView(context: Context) : GameView(context) {
+
+    private class GBubble(
+        var x: Float, var y: Float, val r: Float, val vx: Float, val vy: Float,
+        val color: Int, val golden: Boolean, val phase: Float
+    )
+
+    private class GBurst(val x: Float, val y: Float, val color: Int) {
+        var t = 0f
+    }
+
+    private val bubbles = ArrayList<GBubble>()
+    private val bursts = ArrayList<GBurst>()
+    private var spawnT = 0.6f
+    private var blow = 0f
+    private var popped = 0
+    private val goal = 8
+    private var celebrate = 0f
+    private var sinceGolden = 0
+    private var bg: Shader? = null
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        bg = sky(h)
+    }
+
+    private fun gx(): Float = width / 2f
+    private fun gy(): Float = height * 0.80f
+    private fun gr(): Float = 38f * d
+    private fun shownX(b: GBubble): Float = b.x + sin(clock * 1.6f + b.phase) * 8f * d
+
+    override fun step(dt: Float) {
+        val w = width.toFloat()
+        if (w <= 0f) return
+        if (blow > 0f) blow = max(0f, blow - dt)
+        if (celebrate > 0f) {
+            celebrate -= dt
+            if (celebrate <= 0f) popped = 0
+        } else {
+            spawnT -= dt
+            if (spawnT <= 0f && bubbles.size < 6) {
+                spawnT = 1.0f + Random.nextFloat() * 0.5f
+                blow = 0.45f
+                sinceGolden++
+                val golden = sinceGolden >= 5 && Random.nextFloat() < 0.5f
+                if (golden) sinceGolden = 0
+                val radius = if (golden) 38f * d else (30f + Random.nextFloat() * 14f) * d
+                val color = if (golden) Color.parseColor("#FFC93C") else PALETTE[Random.nextInt(PALETTE.size)]
+                bubbles.add(
+                    GBubble(
+                        gx() + (Random.nextFloat() - 0.5f) * 20f * d, gy() - gr() * 0.5f, radius,
+                        (Random.nextFloat() - 0.5f) * 70f * d, -(55f + Random.nextFloat() * 35f) * d,
+                        color, golden, Random.nextFloat() * 6.28f
+                    )
+                )
+            }
+        }
+        for (b in bubbles) {
+            b.x += b.vx * dt
+            b.y += b.vy * dt
+        }
+        bubbles.removeAll { it.y < -it.r || it.x < -it.r || it.x > w + it.r }
+        for (u in bursts) u.t += dt
+        bursts.removeAll { it.t > 0.5f }
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        val a = e.actionMasked
+        if (a == MotionEvent.ACTION_DOWN || a == MotionEvent.ACTION_POINTER_DOWN) {
+            val i = e.actionIndex
+            popAt(e.getX(i), e.getY(i))
+        }
+        return true
+    }
+
+    private fun popAt(x: Float, y: Float) {
+        if (celebrate > 0f) return
+        var best: GBubble? = null
+        var bestDist = Float.MAX_VALUE
+        for (b in bubbles) {
+            val dx = shownX(b) - x
+            val dy = b.y - y
+            val dist = sqrt(dx * dx + dy * dy)
+            if (dist < b.r * 1.3f && dist < bestDist) {
+                best = b
+                bestDist = dist
+            }
+        }
+        val hit = best ?: return
+        bubbles.remove(hit)
+        bursts.add(GBurst(shownX(hit), hit.y, hit.color))
+        Sounds.play(context, Snd.POP)
+        if (hit.golden) {
+            Sounds.play(context, Snd.SPARKLE, true)
+            onStar?.invoke()
+        }
+        popped++
+        if (popped >= goal) {
+            for (o in bubbles) bursts.add(GBurst(shownX(o), o.y, o.color))
+            bubbles.clear()
+            celebrate = 2.2f
+            onRound?.invoke()
+        }
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val w = width.toFloat()
+        paintBackground(canvas, bg)
+        val gap = 26f * d
+        val x0 = w / 2f - (goal - 1) * gap / 2f
+        for (i in 0 until goal) {
+            paint.style = Paint.Style.FILL
+            paint.color = if (i < popped) Color.parseColor("#FFC93C") else Color.parseColor("#D8D2F0")
+            canvas.drawCircle(x0 + i * gap, 70f * d, 9f * d, paint)
+        }
+        for (b in bubbles) {
+            val x = shownX(b)
+            paint.style = Paint.Style.FILL
+            paint.color = withAlpha(b.color, if (b.golden) 150 else 110)
+            canvas.drawCircle(x, b.y, b.r, paint)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 3f * d
+            paint.color = withAlpha(b.color, 235)
+            canvas.drawCircle(x, b.y, b.r, paint)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.argb(190, 255, 255, 255)
+            canvas.drawCircle(x - b.r * 0.35f, b.y - b.r * 0.35f, b.r * 0.18f, paint)
+            if (b.golden) drawShape(canvas, paint, 3, x, b.y, b.r * 0.5f, Color.parseColor("#FF8A2B"), false, d)
+        }
+        for (u in bursts) {
+            val k = u.t / 0.5f
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 3f * d
+            paint.color = withAlpha(u.color, ((1f - k) * 255f).toInt())
+            canvas.drawCircle(u.x, u.y, 20f * d + k * 50f * d, paint)
+            paint.style = Paint.Style.FILL
+            for (n in 0 until 6) {
+                val a = n * 1.047f
+                canvas.drawCircle(u.x + cos(a) * (24f + 46f * k) * d, u.y + sin(a) * (24f + 46f * k) * d, 4f * d, paint)
+            }
+        }
+        drawCuteGhost(canvas, paint, gx(), gy(), gr(), clock, if (celebrate > 0f) 1f else 0f)
+        if (blow > 0f) {
+            // the mouth is a round "o" while the ghost blows
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#F7F4FF")
+            canvas.drawCircle(gx(), gy() + gr() * 0.27f, gr() * 0.3f, paint)
+            paint.color = Color.parseColor("#2B2540")
+            canvas.drawCircle(gx(), gy() + gr() * 0.3f, gr() * 0.13f, paint)
+        }
+        if (celebrate > 0f) drawCelebration(canvas, paint, gx(), gy(), clock, d)
+    }
+}
+
+// ============================================================ game 8: catch the butterfly
+
+/** Butterflies fly around the ghost. The child touches one: the ghost jumps for joy, holds it a moment, then lets it go. */
+private class ButterflyView(context: Context) : GameView(context) {
+
+    private class Fly(val radius: Float, val speed: Float, var angle: Float, val color: Int, val phase: Float, val ky: Float) {
+        var held = 0f
+        var rel = 1f
+    }
+
+    private val flies = ArrayList<Fly>()
+    private var stage = MiniGames.butterflyStage(context)
+    private var caught = 0
+    private val goal = 5
+    private var celebrate = 0f
+    private var joy = 0f
+    private var bg: Shader? = null
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        bg = sky(h)
+        if (flies.isEmpty() && w > 0) setup()
+    }
+
+    private fun setup() {
+        flies.clear()
+        val n = 2 + stage
+        for (i in 0 until n) {
+            val dir = if (i % 2 == 0) 1f else -1f
+            flies.add(
+                Fly(
+                    min((90f + 34f * i) * d, width * 0.42f), (0.5f + 0.18f * stage + 0.08f * i) * dir,
+                    i * 2.1f, PALETTE[i % 4], i * 1.7f, 0.7f + 0.1f * i
+                )
+            )
+        }
+    }
+
+    private fun cx(): Float = width / 2f
+    private fun cy(): Float = height * 0.46f
+    private fun gr(): Float = 36f * d
+
+    private fun handX(): Float = cx() + gr() * 1.05f
+    private fun handY(): Float = cy() - gr() * 0.2f
+
+    private fun posX(f: Fly): Float {
+        val ox = cx() + cos(f.angle) * f.radius
+        if (f.held > 0f) return handX() + sin(clock * 12f + f.phase) * 4f * d
+        val k = f.rel.coerceIn(0f, 1f)
+        return handX() + (ox - handX()) * k
+    }
+
+    private fun posY(f: Fly): Float {
+        val oy = cy() + sin(f.angle * 1.3f + f.phase) * f.radius * f.ky + sin(clock * 3f + f.phase) * 8f * d
+        if (f.held > 0f) return handY() + sin(clock * 9f + f.phase) * 3f * d
+        val k = f.rel.coerceIn(0f, 1f)
+        return handY() + (oy - handY()) * k
+    }
+
+    override fun step(dt: Float) {
+        if (flies.isEmpty()) return
+        if (joy > 0f) joy = max(0f, joy - dt)
+        for (f in flies) {
+            if (f.held > 0f) {
+                f.held -= dt
+                if (f.held <= 0f) f.rel = 0f
+            } else {
+                f.angle += f.speed * dt
+                if (f.rel < 1f) f.rel = min(1f, f.rel + dt / 0.9f)
+            }
+        }
+        if (celebrate > 0f) {
+            celebrate -= dt
+            if (celebrate <= 0f) {
+                caught = 0
+                stage = MiniGames.butterflyStage(context)
+                setup()
+            }
+        }
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (e.actionMasked != MotionEvent.ACTION_DOWN || celebrate > 0f) return true
+        for (f in flies) {
+            if (f.held > 0f || f.rel < 1f) continue
+            val dx = posX(f) - e.x
+            val dy = posY(f) - e.y
+            if (sqrt(dx * dx + dy * dy) < 48f * d) {
+                f.held = 1.0f
+                joy = 1.2f
+                caught++
+                Sounds.play(context, Snd.POP)
+                if (caught >= goal) {
+                    celebrate = 2.4f
+                    onRound?.invoke()
+                    MiniGames.setButterflyStage(context, (stage + 1) % MiniGames.BUTTERFLY_STAGES)
+                }
+                break
+            }
+        }
+        return true
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val w = width.toFloat()
+        paintBackground(canvas, bg)
+        val gap = 26f * d
+        val x0 = w / 2f - (goal - 1) * gap / 2f
+        for (i in 0 until goal) {
+            paint.style = Paint.Style.FILL
+            paint.color = if (i < caught) Color.parseColor("#FFC93C") else Color.parseColor("#D8D2F0")
+            canvas.drawCircle(x0 + i * gap, 70f * d, 9f * d, paint)
+        }
+        drawCuteGhost(canvas, paint, cx(), cy(), gr(), clock, if (joy > 0f || celebrate > 0f) 1f else 0f)
+        for (f in flies) {
+            drawButterfly(canvas, paint, posX(f), posY(f), 24f * d, f.color, clock * 14f + f.phase)
+        }
+        if (celebrate > 0f) drawCelebration(canvas, paint, cx(), cy(), clock, d)
+    }
+}
+
+// ============================================================ game 9: pass the ball
+
+/** The ghost rolls a ball to the child, who drags it back up to the ghost. The ball changes every round. */
+private class BallView(context: Context) : GameView(context) {
+
+    private var phase = 0 // 0 rolling to the child, 1 waiting, 2 dragged, 3 flying back, 4 the ghost has it
+    private var t = 0f
+    private var bx = 0f
+    private var by = 0f
+    private var offX = 0f
+    private var offY = 0f
+    private var angle = 0f
+    private var type = 0
+    private var colorIndex = 0
+    private var returns = 0
+    private val goal = 5
+    private var celebrate = 0f
+    private var joy = 0f
+    private var bg: Shader? = null
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        bg = sky(h)
+        if (w > 0 && h > 0 && t == 0f && phase == 0) startRoll()
+    }
+
+    private fun gx(): Float = width / 2f
+    private fun gy(): Float = height * 0.20f
+    private fun gr(): Float = 38f * d
+    private fun ballR(): Float = 40f * d
+    private fun restX(): Float = width / 2f
+    private fun restY(): Float = height * 0.70f
+
+    private fun startRoll() {
+        phase = 0
+        t = 0.0001f
+        bx = gx()
+        by = gy() + gr()
+    }
+
+    private fun nextBall() {
+        type = (type + 1) % 4
+        colorIndex = Random.nextInt(4)
+    }
+
+    override fun step(dt: Float) {
+        if (width <= 0) return
+        if (joy > 0f) joy = max(0f, joy - dt)
+        when (phase) {
+            0 -> {
+                t += dt / 1.8f
+                val k = 1f - (1f - min(t, 1f)) * (1f - min(t, 1f))
+                bx = gx()
+                by = gy() + gr() + (restY() - gy() - gr()) * k
+                angle = k * 720f
+                if (t >= 1f) {
+                    phase = 1
+                    t = 0f
+                }
+            }
+            1 -> {
+                bx += (restX() - bx) * min(1f, dt * 8f)
+                by += (restY() - by) * min(1f, dt * 8f)
+            }
+            3 -> {
+                t += dt / 0.35f
+                val k = min(t, 1f)
+                bx += (gx() - bx) * min(1f, dt * 10f)
+                by += (gy() + gr() * 0.4f - by) * min(1f, dt * 10f)
+                angle += 900f * dt
+                if (k >= 1f) {
+                    phase = 4
+                    t = 0f
+                    joy = 1.1f
+                    returns++
+                    Sounds.play(context, Snd.POP)
+                    if (returns >= goal) {
+                        celebrate = 2.4f
+                        onRound?.invoke()
+                    }
+                }
+            }
+            4 -> {
+                t += dt
+                if (celebrate > 0f) {
+                    celebrate -= dt
+                    if (celebrate <= 0f) {
+                        returns = 0
+                        nextBall()
+                        startRoll()
+                    }
+                } else if (t > 1.0f) {
+                    nextBall()
+                    startRoll()
+                }
+            }
+        }
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                if (phase == 1) {
+                    val dx = bx - e.x
+                    val dy = by - e.y
+                    if (sqrt(dx * dx + dy * dy) < ballR() * 1.7f) {
+                        phase = 2
+                        offX = dx
+                        offY = dy
+                    }
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (phase == 2) {
+                    bx = e.x + offX
+                    by = e.y + offY
+                    angle += 6f
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (phase == 2) {
+                    val dx = bx - gx()
+                    val dy = by - gy()
+                    if (sqrt(dx * dx + dy * dy) < gr() + ballR() * 1.6f || by < height * 0.36f) {
+                        phase = 3
+                        t = 0f
+                    } else {
+                        phase = 1
+                    }
+                }
+            }
+        }
+        return true
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val w = width.toFloat()
+        paintBackground(canvas, bg)
+        val gap = 26f * d
+        val x0 = w / 2f - (goal - 1) * gap / 2f
+        for (i in 0 until goal) {
+            paint.style = Paint.Style.FILL
+            paint.color = if (i < returns) Color.parseColor("#FFC93C") else Color.parseColor("#D8D2F0")
+            canvas.drawCircle(x0 + i * gap, 70f * d + gr() * 2.6f, 9f * d, paint)
+        }
+        drawCuteGhost(canvas, paint, gx(), gy(), gr(), clock, if (joy > 0f || celebrate > 0f) 1f else 0f)
+
+        // little arrows that rise toward the ghost while the ball waits for the child
+        if (phase == 1) {
+            for (k in 0 until 3) {
+                val ph = (clock * 1.2f + k * 0.33f) % 1f
+                val y = restY() - ballR() * 1.5f - ph * 90f * d
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 4f * d
+                paint.strokeCap = Paint.Cap.ROUND
+                paint.color = withAlpha(Color.parseColor("#7C5CFF"), ((1f - ph) * 200f).toInt())
+                canvas.drawLine(restX() - 14f * d, y + 8f * d, restX(), y - 4f * d, paint)
+                canvas.drawLine(restX() + 14f * d, y + 8f * d, restX(), y - 4f * d, paint)
+            }
+        }
+        val pulse = if (phase == 1) 1f + 0.05f * sin(clock * 4f) else if (phase == 2) 1.12f else 1f
+        paint.style = Paint.Style.FILL
+        paint.color = Color.argb(34, 0, 0, 0)
+        helperRect.set(bx - ballR() * 0.9f, by + ballR() * 0.85f, bx + ballR() * 0.9f, by + ballR() * 1.1f)
+        canvas.drawOval(helperRect, paint)
+        drawBall(canvas, paint, type, bx, by, ballR() * pulse, colorIndex, angle)
+        if (celebrate > 0f) drawCelebration(canvas, paint, gx(), gy(), clock, d)
+    }
+}
+
+// ============================================================ game 10: where is the right shape?
+
+/** The ghost thinks of a shape (the first one is a circle); the child picks it among three. */
+private class WhichShapeView(context: Context) : GameView(context) {
+
+    private val options = IntArray(3)
+    private val shake = FloatArray(3)
+    private var target = 0
+    private var correct = 0
+    private val goal = 5
+    private var nextIn = 0f
+    private var joy = 0f
+    private var sadT = 0f
+    private var celebrate = 0f
+    private var first = true
+    private var bg: Shader? = null
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        bg = sky(h)
+        if (w > 0 && first) {
+            first = false
+            deal(0)
+        }
+    }
+
+    /** A new question; [wanted] is the shape asked for, or -1 for a random one different from the last. */
+    private fun deal(wanted: Int) {
+        val all = mutableListOf(0, 1, 2, 3)
+        all.shuffle()
+        var t = if (wanted >= 0) wanted else all[0]
+        if (wanted < 0 && t == target) t = all[1]
+        target = t
+        val others = ArrayList<Int>()
+        for (s in 0 until 4) if (s != t) others.add(s)
+        others.shuffle()
+        val list = mutableListOf(t, others[0], others[1])
+        list.shuffle()
+        for (i in 0 until 3) {
+            options[i] = list[i]
+            shake[i] = 0f
+        }
+    }
+
+    private fun cardSize(): Float = min(width * 0.27f, 104f * d)
+    private fun cardX(i: Int): Float = width * (2 * i + 1) / 6f
+    private fun cardY(): Float = height * 0.64f
+
+    override fun step(dt: Float) {
+        if (joy > 0f) joy = max(0f, joy - dt)
+        if (sadT > 0f) sadT = max(0f, sadT - dt)
+        for (i in 0 until 3) if (shake[i] > 0f) shake[i] = max(0f, shake[i] - dt)
+        if (nextIn > 0f) {
+            nextIn -= dt
+            if (nextIn <= 0f) deal(-1)
+        }
+        if (celebrate > 0f) {
+            celebrate -= dt
+            if (celebrate <= 0f) {
+                correct = 0
+                deal(0)
+            }
+        }
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (e.actionMasked != MotionEvent.ACTION_DOWN || nextIn > 0f || celebrate > 0f) return true
+        val half = cardSize() / 2f
+        for (i in 0 until 3) {
+            if (abs(e.x - cardX(i)) < half && abs(e.y - cardY()) < half) {
+                if (options[i] == target) {
+                    joy = 1.3f
+                    correct++
+                    Sounds.play(context, Snd.POP)
+                    if (correct >= goal) {
+                        celebrate = 2.4f
+                        onRound?.invoke()
+                    } else {
+                        nextIn = 1.4f
+                    }
+                } else {
+                    shake[i] = 0.5f
+                    sadT = 0.6f
+                }
+                break
+            }
+        }
+        return true
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        paintBackground(canvas, bg)
+        val gap = 24f * d
+        for (i in 0 until goal) {
+            paint.style = Paint.Style.FILL
+            paint.color = if (i < correct) Color.parseColor("#FFC93C") else Color.parseColor("#D8D2F0")
+            canvas.drawCircle(w / 2f + (i - (goal - 1) / 2f) * gap, 64f * d, 8f * d, paint)
+        }
+
+        // the ghost and its thought: the shape it wants
+        val happy = joy > 0f || celebrate > 0f
+        drawCuteGhost(canvas, paint, w * 0.27f, h * 0.27f, 40f * d, clock, if (happy) 1f else 0f, Color.parseColor("#F7F4FF"), sadT > 0f)
+        paint.style = Paint.Style.FILL
+        paint.color = Color.WHITE
+        canvas.drawCircle(w * 0.46f, h * 0.30f, 6f * d, paint)
+        canvas.drawCircle(w * 0.52f, h * 0.27f, 9f * d, paint)
+        canvas.drawCircle(w * 0.70f, h * 0.21f, 58f * d, paint)
+        drawShape(canvas, paint, target, w * 0.70f, h * 0.21f, 32f * d, PALETTE[target], false, d)
+
+        // three cards to choose from
+        for (i in 0 until 3) {
+            val x = cardX(i) + sin(shake[i] * 50f) * 6f * d * (if (shake[i] > 0f) 1f else 0f)
+            val s = cardSize()
+            paint.style = Paint.Style.FILL
+            paint.color = Color.argb(34, 0, 0, 0)
+            helperRect.set(x - s / 2f + 3f * d, cardY() - s / 2f + 6f * d, x + s / 2f + 3f * d, cardY() + s / 2f + 6f * d)
+            canvas.drawRoundRect(helperRect, 22f * d, 22f * d, paint)
+            paint.color = Color.WHITE
+            helperRect.set(x - s / 2f, cardY() - s / 2f, x + s / 2f, cardY() + s / 2f)
+            canvas.drawRoundRect(helperRect, 22f * d, 22f * d, paint)
+            drawShape(canvas, paint, options[i], x, cardY(), s * 0.32f, PALETTE[options[i]], false, d)
+        }
+        if (celebrate > 0f) drawCelebration(canvas, paint, w / 2f, h * 0.45f, clock, d)
+    }
+}
+
+// ============================================================ game 11: find the twin
+
+/**
+ * A few pictures lie on the table and the child looks for the identical ones: touch one, then its twin.
+ * It begins with one pair among three pictures and grows to three pairs.
+ */
+private class TwinsView(context: Context) : GameView(context) {
+
+    private class Card(val kind: Int) {
+        var matched = false
+        var sel = false
+        var shake = 0f
+    }
+
+    private val cards = ArrayList<Card>()
+    private var stage = MiniGames.twinsStage(context)
+    private var first = -1
+    private var second = -1
+    private var checkT = 0f
+    private var pairsLeft = 0
+    private var celebrate = 0f
+    private var bg: Shader? = null
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        bg = sky(h)
+        if (cards.isEmpty() && w > 0) deal()
+    }
+
+    private fun deal() {
+        val pairs = intArrayOf(1, 2, 2, 3)[stage]
+        val odds = intArrayOf(1, 0, 1, 0)[stage]
+        val kinds = mutableListOf(0, 1, 2, 3, 4, 5, 6, 7)
+        kinds.shuffle()
+        cards.clear()
+        var n = 0
+        for (i in 0 until pairs) {
+            cards.add(Card(kinds[n]))
+            cards.add(Card(kinds[n]))
+            n++
+        }
+        for (i in 0 until odds) {
+            cards.add(Card(kinds[n]))
+            n++
+        }
+        cards.shuffle()
+        pairsLeft = pairs
+        first = -1
+        second = -1
+        checkT = 0f
+    }
+
+    private fun cols(): Int = if (cards.size <= 3) cards.size else 3
+    private fun rowsCount(): Int = (cards.size + cols() - 1) / cols()
+    private fun cardSize(): Float = min(min(width / (cols() * 1.3f), 104f * d), height * 0.5f / (rowsCount() * 1.3f))
+
+    private fun cardX(i: Int): Float {
+        val row = i / cols()
+        val rowItems = if (row < rowsCount() - 1) cols() else cards.size - cols() * (rowsCount() - 1)
+        return width * (2 * (i % cols()) + 1) / (2f * rowItems)
+    }
+
+    private fun cardY(i: Int): Float = height * 0.20f + cardSize() * 0.65f + (i / cols()) * cardSize() * 1.3f
+
+    override fun step(dt: Float) {
+        for (c in cards) if (c.shake > 0f) c.shake = max(0f, c.shake - dt)
+        if (checkT > 0f) {
+            checkT -= dt
+            if (checkT <= 0f) {
+                if (first >= 0) cards[first].sel = false
+                if (second >= 0) cards[second].sel = false
+                first = -1
+                second = -1
+            }
+        }
+        if (celebrate > 0f) {
+            celebrate -= dt
+            if (celebrate <= 0f) {
+                stage = MiniGames.twinsStage(context)
+                deal()
+            }
+        }
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (e.actionMasked != MotionEvent.ACTION_DOWN || checkT > 0f || celebrate > 0f) return true
+        val half = cardSize() / 2f
+        for (i in cards.indices) {
+            val c = cards[i]
+            if (c.matched || c.sel) continue
+            if (abs(e.x - cardX(i)) < half && abs(e.y - cardY(i)) < half) {
+                if (first < 0) {
+                    first = i
+                    c.sel = true
+                } else {
+                    val f = cards[first]
+                    if (f.kind == c.kind) {
+                        f.matched = true
+                        c.matched = true
+                        f.sel = false
+                        first = -1
+                        pairsLeft--
+                        Sounds.play(context, Snd.POP)
+                        if (pairsLeft <= 0) {
+                            celebrate = 2.4f
+                            onRound?.invoke()
+                            MiniGames.setTwinsStage(context, (stage + 1) % MiniGames.TWINS_STAGES)
+                        }
+                    } else {
+                        c.sel = true
+                        second = i
+                        f.shake = 0.5f
+                        c.shake = 0.5f
+                        checkT = 0.7f
+                    }
+                }
+                break
+            }
+        }
+        return true
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        paintBackground(canvas, bg)
+        val gap = 22f * d
+        for (i in 0 until MiniGames.TWINS_STAGES) {
+            paint.style = Paint.Style.FILL
+            val filled = if (celebrate > 0f) stage + 1 else stage
+            paint.color = if (i < filled) Color.parseColor("#FFC93C") else Color.parseColor("#D8D2F0")
+            canvas.drawCircle(w / 2f + (i - (MiniGames.TWINS_STAGES - 1) / 2f) * gap, 52f * d, 6.5f * d, paint)
+        }
+        val s = cardSize()
+        for (i in cards.indices) {
+            val c = cards[i]
+            val x = cardX(i) + sin(c.shake * 50f) * 6f * d * (if (c.shake > 0f) 1f else 0f)
+            val y = cardY(i) - (if (c.sel) 8f * d else 0f)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.argb(34, 0, 0, 0)
+            helperRect.set(x - s / 2f + 3f * d, y - s / 2f + 6f * d, x + s / 2f + 3f * d, y + s / 2f + 6f * d)
+            canvas.drawRoundRect(helperRect, 20f * d, 20f * d, paint)
+            paint.color = if (c.matched) Color.parseColor("#E3F8EA") else Color.WHITE
+            helperRect.set(x - s / 2f, y - s / 2f, x + s / 2f, y + s / 2f)
+            canvas.drawRoundRect(helperRect, 20f * d, 20f * d, paint)
+            if (c.sel || c.matched) {
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 4f * d
+                paint.color = if (c.matched) Color.parseColor("#4CC38A") else Color.parseColor("#FFC93C")
+                canvas.drawRoundRect(helperRect, 20f * d, 20f * d, paint)
+                paint.style = Paint.Style.FILL
+            }
+            val bob = if (c.matched) sin(clock * 4f + i) * 3f * d else 0f
+            drawPicture(canvas, paint, c.kind, x, y + bob, s * 0.3f, d)
+        }
+        val happy = celebrate > 0f
+        drawCuteGhost(canvas, paint, w / 2f, h - 78f * d, 32f * d, clock, if (happy) 1f else 0f)
+        if (happy) drawCelebration(canvas, paint, w / 2f, h - 78f * d, clock, d)
+    }
+}
+
 // ============================================================ screens
 
 private class GameTileView(context: Context, private val game: Int) : View(context) {
@@ -1290,6 +2164,38 @@ private class GameTileView(context: Context, private val game: Int) : View(conte
                 drawShape(canvas, paint, 2, cx + 0.04f * s, cy - bob, 0.16f * s, PALETTE[2], false, d)
                 drawShape(canvas, paint, 3, cx + 0.28f * s, cy + bob, 0.15f * s, PALETTE[3], false, d)
             }
+            MiniGames.GAME_GHOST_BUBBLES -> {
+                drawCuteGhost(canvas, paint, cx - 0.1f * s, cy + 0.12f * s + bob, 0.17f * s, clock, 0f)
+                paint.style = Paint.Style.FILL
+                paint.color = withAlpha(Color.parseColor("#FFC93C"), 150)
+                canvas.drawCircle(cx + 0.22f * s, cy - 0.16f * s - bob, 0.15f * s, paint)
+                drawShape(canvas, paint, 3, cx + 0.22f * s, cy - 0.16f * s - bob, 0.08f * s, Color.parseColor("#FF8A2B"), false, d)
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 3f * d
+                paint.color = withAlpha(PALETTE[1], 235)
+                canvas.drawCircle(cx - 0.18f * s, cy - 0.22f * s + bob, 0.1f * s, paint)
+                paint.style = Paint.Style.FILL
+            }
+            MiniGames.GAME_BUTTERFLY -> {
+                drawButterfly(canvas, paint, cx, cy + bob, 0.26f * s, PALETTE[0], clock * 6f)
+                drawButterfly(canvas, paint, cx - 0.28f * s, cy - 0.2f * s - bob, 0.14f * s, PALETTE[1], clock * 7f + 1f)
+            }
+            MiniGames.GAME_BALL -> drawBall(canvas, paint, 1, cx, cy + bob, 0.22f * s, 0, clock * 60f)
+            MiniGames.GAME_WHICH -> {
+                drawShape(canvas, paint, 0, cx - 0.26f * s, cy + bob, 0.13f * s, PALETTE[0], false, d)
+                drawShape(canvas, paint, 1, cx, cy - bob, 0.12f * s, PALETTE[1], false, d)
+                drawShape(canvas, paint, 2, cx + 0.26f * s, cy + bob, 0.13f * s, PALETTE[2], false, d)
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 4f * d
+                paint.color = Color.parseColor("#FFC93C")
+                canvas.drawCircle(cx - 0.26f * s, cy + bob, 0.19f * s, paint)
+                paint.style = Paint.Style.FILL
+            }
+            MiniGames.GAME_TWINS -> {
+                drawBookItem(canvas, paint, 0, cx - 0.27f * s, cy + bob, 0.1f * s)
+                drawBookItem(canvas, paint, 1, cx, cy - bob, 0.1f * s)
+                drawBookItem(canvas, paint, 0, cx + 0.27f * s, cy + bob, 0.1f * s)
+            }
             else -> {
                 for (i in 0 until 3) {
                     val x = cx + (i - 1) * 0.3f * s
@@ -1315,7 +2221,7 @@ private fun gameBackground(): GradientDrawable =
         intArrayOf(Color.parseColor("#BDE6FF"), Color.parseColor("#F5F3FF"))
     )
 
-/** The three small games as three big picture cards. */
+/** The small games as big picture cards, two in a row. */
 class MiniGamesActivity : Activity() {
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
@@ -1325,19 +2231,40 @@ class MiniGamesActivity : Activity() {
         val root = FrameLayout(this)
         root.background = gameBackground()
 
+        val games = intArrayOf(
+            MiniGames.GAME_BUBBLES, MiniGames.GAME_GHOST_BUBBLES,
+            MiniGames.GAME_SHAPES, MiniGames.GAME_WHICH,
+            MiniGames.GAME_COLORS, MiniGames.GAME_TWINS,
+            MiniGames.GAME_BUTTERFLY, MiniGames.GAME_BALL
+        )
+        val dm = resources.displayMetrics
+        val rows = (games.size + 1) / 2
+        val side = max(dp(80), min(min((dm.widthPixels - dp(48)) / 2, (dm.heightPixels - dp(150)) / rows - dp(12)), dp(150)))
+
         val column = LinearLayout(this)
         column.orientation = LinearLayout.VERTICAL
         column.gravity = Gravity.CENTER
-        val dm = resources.displayMetrics
-        val side = max(dp(90), min((dm.heightPixels - dp(200)) / 3, dp(150)))
-        for (game in 0 until 3) {
-            val tile = GameTileView(this, game)
-            tile.setOnClickListener {
-                startActivity(Intent(this, MiniGameActivity::class.java).putExtra(MiniGameActivity.EXTRA_GAME, game))
+        column.setPadding(0, dp(80), 0, dp(16))
+        for (r in 0 until rows) {
+            val line = LinearLayout(this)
+            line.orientation = LinearLayout.HORIZONTAL
+            line.gravity = Gravity.CENTER
+            for (c in 0 until 2) {
+                val index = r * 2 + c
+                if (index >= games.size) continue
+                val game = games[index]
+                val tile = GameTileView(this, game)
+                tile.setOnClickListener {
+                    startActivity(Intent(this, MiniGameActivity::class.java).putExtra(MiniGameActivity.EXTRA_GAME, game))
+                }
+                val lp = LinearLayout.LayoutParams(side, side)
+                lp.setMargins(dp(6), dp(6), dp(6), dp(6))
+                line.addView(tile, lp)
             }
-            val lp = LinearLayout.LayoutParams(min(dm.widthPixels - dp(48), dp(280)), side)
-            lp.setMargins(0, dp(8), 0, dp(8))
-            column.addView(tile, lp)
+            column.addView(
+                line,
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            )
         }
         root.addView(
             column,
@@ -1371,9 +2298,15 @@ class MiniGameActivity : Activity() {
             MiniGames.GAME_COUNTING -> CountingView(this)
             MiniGames.GAME_DOCTOR -> DoctorView(this)
             MiniGames.GAME_CLASS -> ClassroomView(this)
+            MiniGames.GAME_GHOST_BUBBLES -> GhostBubblesView(this)
+            MiniGames.GAME_BUTTERFLY -> ButterflyView(this)
+            MiniGames.GAME_BALL -> BallView(this)
+            MiniGames.GAME_WHICH -> WhichShapeView(this)
+            MiniGames.GAME_TWINS -> TwinsView(this)
             else -> BubblesView(this)
         }
         view.onRound = { MiniGames.reward(this) }
+        view.onStar = { MiniGames.goldenStar(this) }
 
         val root = FrameLayout(this)
         root.addView(
