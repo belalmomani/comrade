@@ -44,6 +44,8 @@ object MiniGames {
     const val GAME_BALL = 8
     const val GAME_WHICH = 9
     const val GAME_TWINS = 10
+    const val GAME_BAND = 11
+    const val GAME_ANIMALS = 12
 
     private const val PREFS = "ghost_goals"
     private const val KEY_DAY = "mg_day"
@@ -93,6 +95,12 @@ object MiniGames {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putInt(key, value.coerceIn(0, max - 1)).apply()
     }
+
+    /** The animal game has two stages: three animals (cat, duck, cow), then five. */
+    const val ANIMAL_STAGES = 2
+
+    fun animalStage(context: Context): Int = stageOf(context, "animal_stage", ANIMAL_STAGES)
+    fun setAnimalStage(context: Context, stage: Int) = setStageOf(context, "animal_stage", stage, ANIMAL_STAGES)
 
     fun butterflyStage(context: Context): Int = stageOf(context, "butterfly_stage", BUTTERFLY_STAGES)
     fun setButterflyStage(context: Context, stage: Int) = setStageOf(context, "butterfly_stage", stage, BUTTERFLY_STAGES)
@@ -2092,6 +2100,613 @@ private class TwinsView(context: Context) : GameView(context) {
     }
 }
 
+// ============================================================ animals (for the animal sounds game)
+
+/** Faces of 0 cat, 1 duck, 2 cow, 3 dog, 4 sheep, drawn in a circle of radius [r]. */
+private fun drawAnimal(c: Canvas, p: Paint, kind: Int, cx: Float, cy: Float, r: Float) {
+    val dark = Color.parseColor("#2B2540")
+    p.style = Paint.Style.FILL
+    when (kind) {
+        0 -> { // cat
+            p.color = Color.parseColor("#F4A261")
+            helperPath.reset()
+            helperPath.moveTo(cx - r * 0.9f, cy - r * 0.1f)
+            helperPath.lineTo(cx - r * 0.65f, cy - r * 1.1f)
+            helperPath.lineTo(cx - r * 0.1f, cy - r * 0.7f)
+            helperPath.close()
+            c.drawPath(helperPath, p)
+            helperPath.reset()
+            helperPath.moveTo(cx + r * 0.9f, cy - r * 0.1f)
+            helperPath.lineTo(cx + r * 0.65f, cy - r * 1.1f)
+            helperPath.lineTo(cx + r * 0.1f, cy - r * 0.7f)
+            helperPath.close()
+            c.drawPath(helperPath, p)
+            c.drawCircle(cx, cy, r * 0.9f, p)
+            p.color = Color.WHITE
+            c.drawCircle(cx - r * 0.35f, cy - r * 0.1f, r * 0.17f, p)
+            c.drawCircle(cx + r * 0.35f, cy - r * 0.1f, r * 0.17f, p)
+            p.color = dark
+            c.drawCircle(cx - r * 0.35f, cy - r * 0.1f, r * 0.08f, p)
+            c.drawCircle(cx + r * 0.35f, cy - r * 0.1f, r * 0.08f, p)
+            p.color = Color.parseColor("#FF8FB8")
+            helperPath.reset()
+            helperPath.moveTo(cx - r * 0.1f, cy + r * 0.12f)
+            helperPath.lineTo(cx + r * 0.1f, cy + r * 0.12f)
+            helperPath.lineTo(cx, cy + r * 0.26f)
+            helperPath.close()
+            c.drawPath(helperPath, p)
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = r * 0.04f
+            p.strokeCap = Paint.Cap.ROUND
+            p.color = dark
+            for (k in 0 until 3) {
+                val y = cy + r * (0.22f + 0.1f * k)
+                c.drawLine(cx - r * 0.3f, y, cx - r * 0.95f, y + (k - 1) * r * 0.1f, p)
+                c.drawLine(cx + r * 0.3f, y, cx + r * 0.95f, y + (k - 1) * r * 0.1f, p)
+            }
+        }
+        1 -> { // duck
+            p.color = Color.parseColor("#FFD43B")
+            c.drawCircle(cx - r * 0.1f, cy + r * 0.25f, r * 0.8f, p)
+            c.drawCircle(cx + r * 0.35f, cy - r * 0.5f, r * 0.5f, p)
+            p.color = Color.parseColor("#F5B800")
+            helperRect.set(cx - r * 0.6f, cy + r * 0.05f, cx + r * 0.1f, cy + r * 0.55f)
+            c.drawOval(helperRect, p)
+            p.color = Color.parseColor("#FF8A2B")
+            helperRect.set(cx + r * 0.7f, cy - r * 0.52f, cx + r * 1.2f, cy - r * 0.28f)
+            c.drawOval(helperRect, p)
+            p.color = dark
+            c.drawCircle(cx + r * 0.5f, cy - r * 0.62f, r * 0.07f, p)
+        }
+        2 -> { // cow
+            p.color = Color.parseColor("#F1E4C8")
+            helperPath.reset()
+            helperPath.moveTo(cx - r * 0.5f, cy - r * 0.75f)
+            helperPath.lineTo(cx - r * 0.35f, cy - r * 1.1f)
+            helperPath.lineTo(cx - r * 0.2f, cy - r * 0.8f)
+            helperPath.close()
+            c.drawPath(helperPath, p)
+            helperPath.reset()
+            helperPath.moveTo(cx + r * 0.5f, cy - r * 0.75f)
+            helperPath.lineTo(cx + r * 0.35f, cy - r * 1.1f)
+            helperPath.lineTo(cx + r * 0.2f, cy - r * 0.8f)
+            helperPath.close()
+            c.drawPath(helperPath, p)
+            p.color = Color.parseColor("#C98E78")
+            helperRect.set(cx - r * 1.15f, cy - r * 0.6f, cx - r * 0.6f, cy - r * 0.2f)
+            c.drawOval(helperRect, p)
+            helperRect.set(cx + r * 0.6f, cy - r * 0.6f, cx + r * 1.15f, cy - r * 0.2f)
+            c.drawOval(helperRect, p)
+            p.color = Color.WHITE
+            helperRect.set(cx - r * 0.85f, cy - r * 0.9f, cx + r * 0.85f, cy + r * 0.9f)
+            c.drawOval(helperRect, p)
+            p.color = dark
+            helperRect.set(cx - r * 0.75f, cy - r * 0.8f, cx - r * 0.1f, cy - r * 0.25f)
+            c.drawOval(helperRect, p)
+            helperRect.set(cx + r * 0.15f, cy - r * 0.35f, cx + r * 0.7f, cy + r * 0.05f)
+            c.drawOval(helperRect, p)
+            p.color = Color.parseColor("#FFB6C8")
+            helperRect.set(cx - r * 0.55f, cy + r * 0.15f, cx + r * 0.55f, cy + r * 0.8f)
+            c.drawOval(helperRect, p)
+            p.color = dark
+            c.drawCircle(cx - r * 0.2f, cy + r * 0.45f, r * 0.07f, p)
+            c.drawCircle(cx + r * 0.2f, cy + r * 0.45f, r * 0.07f, p)
+            c.drawCircle(cx - r * 0.38f, cy - r * 0.05f, r * 0.09f, p)
+            c.drawCircle(cx + r * 0.38f, cy - r * 0.05f, r * 0.09f, p)
+        }
+        3 -> { // dog
+            p.color = Color.parseColor("#8A5A3A")
+            helperRect.set(cx - r * 1.05f, cy - r * 0.7f, cx - r * 0.55f, cy + r * 0.35f)
+            c.drawOval(helperRect, p)
+            helperRect.set(cx + r * 0.55f, cy - r * 0.7f, cx + r * 1.05f, cy + r * 0.35f)
+            c.drawOval(helperRect, p)
+            p.color = Color.parseColor("#C68B59")
+            c.drawCircle(cx, cy, r * 0.85f, p)
+            p.color = Color.parseColor("#F1D3B0")
+            helperRect.set(cx - r * 0.45f, cy + r * 0.05f, cx + r * 0.45f, cy + r * 0.75f)
+            c.drawOval(helperRect, p)
+            p.color = Color.parseColor("#FF8FB8")
+            helperRect.set(cx - r * 0.12f, cy + r * 0.55f, cx + r * 0.12f, cy + r * 0.95f)
+            c.drawRoundRect(helperRect, r * 0.1f, r * 0.1f, p)
+            p.color = dark
+            c.drawCircle(cx, cy + r * 0.2f, r * 0.14f, p)
+            c.drawCircle(cx - r * 0.33f, cy - r * 0.15f, r * 0.09f, p)
+            c.drawCircle(cx + r * 0.33f, cy - r * 0.15f, r * 0.09f, p)
+        }
+        else -> { // sheep
+            p.color = Color.parseColor("#F4F4F8")
+            for (k in 0 until 8) {
+                val a = k * 0.785f
+                c.drawCircle(cx + cos(a) * r * 0.62f, cy + sin(a) * r * 0.58f, r * 0.42f, p)
+            }
+            c.drawCircle(cx, cy, r * 0.62f, p)
+            p.color = Color.parseColor("#4B4A58")
+            helperRect.set(cx - r * 0.42f, cy - r * 0.3f, cx + r * 0.42f, cy + r * 0.85f)
+            c.drawOval(helperRect, p)
+            helperRect.set(cx - r * 0.8f, cy - r * 0.05f, cx - r * 0.38f, cy + r * 0.2f)
+            c.drawOval(helperRect, p)
+            helperRect.set(cx + r * 0.38f, cy - r * 0.05f, cx + r * 0.8f, cy + r * 0.2f)
+            c.drawOval(helperRect, p)
+            p.color = Color.WHITE
+            c.drawCircle(cx - r * 0.17f, cy + r * 0.1f, r * 0.07f, p)
+            c.drawCircle(cx + r * 0.17f, cy + r * 0.1f, r * 0.07f, p)
+            p.color = Color.parseColor("#FFB6C8")
+            c.drawCircle(cx, cy + r * 0.5f, r * 0.08f, p)
+        }
+    }
+    p.style = Paint.Style.FILL
+}
+
+// ============================================================ game 13: whose voice is it?
+
+/**
+ * The child hears the voice of an animal (a cat, a duck, a cow, and later a dog and a sheep) and picks the
+ * right animal among three pictures. The voices are made in code: no microphone, no internet.
+ */
+private class AnimalSoundView(context: Context) : GameView(context) {
+
+    private val options = IntArray(3)
+    private val shake = FloatArray(3)
+    private val bounce = FloatArray(3)
+    private var target = 0
+    private var lastTarget = -1
+    private var correct = 0
+    private val goal = 5
+    private var stage = MiniGames.animalStage(context)
+    private var nextIn = 0f
+    private var playIn = 0f
+    private var wave = 0f
+    private var joy = 0f
+    private var sadT = 0f
+    private var celebrate = 0f
+    private var first = true
+    private var muted = false
+    private var muteT = 0f
+    private var bg: Shader? = null
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        bg = sky(h)
+        if (w > 0 && first) {
+            first = false
+            deal()
+        }
+    }
+
+    private fun deal() {
+        val pool = if (stage == 0) 3 else 5
+        val all = (0 until pool).toMutableList()
+        all.shuffle()
+        var t = all[0]
+        if (t == lastTarget) t = all[1]
+        target = t
+        lastTarget = t
+        val others = all.filter { it != t }.take(2)
+        val list = mutableListOf(t, others[0], others[1])
+        list.shuffle()
+        for (i in 0 until 3) {
+            options[i] = list[i]
+            shake[i] = 0f
+            bounce[i] = 0f
+        }
+        playIn = 0.6f
+    }
+
+    private fun speak() {
+        Sounds.playAnimal(context, target)
+        wave = 1.2f
+    }
+
+    private fun cardSize(): Float = min(width * 0.27f, 104f * d)
+    private fun cardX(i: Int): Float = width * (2 * i + 1) / 6f
+    private fun cardY(): Float = height * 0.64f
+    private fun speakerX(): Float = width * 0.66f
+    private fun speakerY(): Float = height * 0.24f
+
+    override fun step(dt: Float) {
+        muteT -= dt
+        if (muteT <= 0f) {
+            muteT = 0.5f
+            muted = !Sounds.enabled(context)
+        }
+        if (wave > 0f) wave = max(0f, wave - dt)
+        if (joy > 0f) joy = max(0f, joy - dt)
+        if (sadT > 0f) sadT = max(0f, sadT - dt)
+        for (i in 0 until 3) {
+            if (shake[i] > 0f) shake[i] = max(0f, shake[i] - dt)
+            if (bounce[i] > 0f) bounce[i] = max(0f, bounce[i] - dt)
+        }
+        if (playIn > 0f) {
+            playIn -= dt
+            if (playIn <= 0f) speak()
+        }
+        if (nextIn > 0f) {
+            nextIn -= dt
+            if (nextIn <= 0f) deal()
+        }
+        if (celebrate > 0f) {
+            celebrate -= dt
+            if (celebrate <= 0f) {
+                correct = 0
+                stage = MiniGames.animalStage(context)
+                deal()
+            }
+        }
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (e.actionMasked != MotionEvent.ACTION_DOWN || celebrate > 0f || nextIn > 0f) return true
+        val sx = speakerX() - e.x
+        val sy = speakerY() - e.y
+        if (sqrt(sx * sx + sy * sy) < 62f * d) {
+            speak()
+            return true
+        }
+        val half = cardSize() / 2f
+        for (i in 0 until 3) {
+            if (abs(e.x - cardX(i)) < half && abs(e.y - cardY()) < half) {
+                if (options[i] == target) {
+                    joy = 1.3f
+                    bounce[i] = 0.6f
+                    correct++
+                    Sounds.playAnimal(context, target)
+                    if (correct >= goal) {
+                        celebrate = 2.6f
+                        onRound?.invoke()
+                        MiniGames.setAnimalStage(context, (stage + 1) % MiniGames.ANIMAL_STAGES)
+                    } else {
+                        nextIn = 1.8f
+                    }
+                } else {
+                    shake[i] = 0.5f
+                    sadT = 0.6f
+                }
+                break
+            }
+        }
+        return true
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        paintBackground(canvas, bg)
+        val gap = 24f * d
+        for (i in 0 until goal) {
+            paint.style = Paint.Style.FILL
+            paint.color = if (i < correct) Color.parseColor("#FFC93C") else Color.parseColor("#D8D2F0")
+            canvas.drawCircle(w / 2f + (i - (goal - 1) / 2f) * gap, 64f * d, 8f * d, paint)
+        }
+
+        // the ghost listens; next to it the speaker that plays the voice (touch it to hear it again)
+        val happy = joy > 0f || celebrate > 0f
+        canvas.save()
+        canvas.rotate(if (wave > 0f) 8f else 0f, w * 0.24f, h * 0.27f)
+        drawCuteGhost(canvas, paint, w * 0.24f, h * 0.27f, 40f * d, clock, if (happy) 1f else 0f, Color.parseColor("#F7F4FF"), sadT > 0f)
+        canvas.restore()
+        paint.style = Paint.Style.FILL
+        paint.color = Color.WHITE
+        canvas.drawCircle(speakerX(), speakerY(), 56f * d, paint)
+        paint.color = Color.parseColor("#7C5CFF")
+        val r = 56f * d
+        helperRect.set(speakerX() - r * 0.45f, speakerY() - r * 0.18f, speakerX() - r * 0.1f, speakerY() + r * 0.18f)
+        canvas.drawRect(helperRect, paint)
+        helperPath.reset()
+        helperPath.moveTo(speakerX() - r * 0.1f, speakerY() - r * 0.18f)
+        helperPath.lineTo(speakerX() + r * 0.28f, speakerY() - r * 0.45f)
+        helperPath.lineTo(speakerX() + r * 0.28f, speakerY() + r * 0.45f)
+        helperPath.lineTo(speakerX() - r * 0.1f, speakerY() + r * 0.18f)
+        helperPath.close()
+        canvas.drawPath(helperPath, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 4f * d
+        paint.strokeCap = Paint.Cap.ROUND
+        val k = if (wave > 0f) 1f - wave / 1.2f else 1f
+        for (n in 0 until 2) {
+            val grow = if (wave > 0f) (k + n * 0.25f).coerceAtMost(1f) else 0f
+            paint.color = withAlpha(Color.parseColor("#7C5CFF"), (if (wave > 0f) 255 * (1f - grow * 0.6f) else 90f).toInt())
+            helperRect.set(
+                speakerX() + r * (0.2f + 0.2f * n), speakerY() - r * (0.2f + 0.14f * n),
+                speakerX() + r * (0.6f + 0.2f * n + grow * 0.15f), speakerY() + r * (0.2f + 0.14f * n)
+            )
+            canvas.drawArc(helperRect, -50f, 100f, false, paint)
+        }
+        if (muted) {
+            paint.color = Color.parseColor("#E5484D")
+            paint.strokeWidth = 6f * d
+            canvas.drawLine(speakerX() - r * 0.7f, speakerY() + r * 0.7f, speakerX() + r * 0.7f, speakerY() - r * 0.7f, paint)
+        }
+        paint.style = Paint.Style.FILL
+
+        // three animals to choose from
+        for (i in 0 until 3) {
+            val bob = sin(bounce[i] * 18f) * 10f * d * (bounce[i] / 0.6f)
+            val x = cardX(i) + sin(shake[i] * 50f) * 6f * d * (if (shake[i] > 0f) 1f else 0f)
+            val y = cardY() - abs(bob)
+            val s = cardSize()
+            paint.style = Paint.Style.FILL
+            paint.color = Color.argb(34, 0, 0, 0)
+            helperRect.set(x - s / 2f + 3f * d, y - s / 2f + 6f * d, x + s / 2f + 3f * d, y + s / 2f + 6f * d)
+            canvas.drawRoundRect(helperRect, 22f * d, 22f * d, paint)
+            paint.color = if (bounce[i] > 0f) Color.parseColor("#E3F8EA") else Color.WHITE
+            helperRect.set(x - s / 2f, y - s / 2f, x + s / 2f, y + s / 2f)
+            canvas.drawRoundRect(helperRect, 22f * d, 22f * d, paint)
+            drawAnimal(canvas, paint, options[i], x, y + s * 0.03f, s * 0.3f)
+        }
+        if (muted) {
+            // a small note for the parents: the voices need the sound
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#6B6590")
+            paint.textAlign = Paint.Align.CENTER
+            paint.textSize = 13f * d
+            canvas.drawText("الصوت مغلق من لوحة الأهل", w / 2f, h - 24f * d, paint)
+        }
+        if (celebrate > 0f) drawCelebration(canvas, paint, w / 2f, h * 0.45f, clock, d)
+    }
+}
+
+// ============================================================ game 12: the ghost band
+
+/**
+ * Two drums, a bell and a xylophone with four coloured bars. Every one makes its own sound when touched,
+ * and the ghost dances to each: it stomps on the big drum, hops on the small one, sways with the bell,
+ * and jumps higher or lower with the note of the bar. Sixteen touches make a song and give a star.
+ */
+private class BandView(context: Context) : GameView(context) {
+
+    private class Note(var x: Float, var y: Float, val color: Int) {
+        var t = 0f
+    }
+
+    private val notes = ArrayList<Note>()
+    private val barPress = FloatArray(4)
+    private var bigPress = 0f
+    private var smallPress = 0f
+    private var bellT = 0f
+    private var moveType = -1
+    private var moveParam = 0
+    private var moveT = 0f
+    private val moveDur = 0.5f
+    private var taps = 0
+    private val goal = 16
+    private var celebrate = 0f
+
+    private fun gx(): Float = width / 2f
+    private fun gy(): Float = height * 0.31f
+    private fun gr(): Float = min(width * 0.15f, 54f * d)
+    private fun bellX(): Float = width * 0.82f
+    private fun bellY(): Float = height * 0.13f
+    private fun bellS(): Float = 28f * d
+    private fun barX(i: Int): Float = width * (0.2f + 0.2f * i)
+    private fun barW(): Float = width * 0.16f
+    private fun barTop(): Float = height * 0.52f
+    private fun barH(i: Int): Float = height * (0.2f - 0.02f * i)
+    private fun bigX(): Float = width * 0.3f
+    private fun bigY(): Float = height * 0.80f
+    private fun bigR(): Float = min(width * 0.2f, 62f * d)
+    private fun smallX(): Float = width * 0.7f
+    private fun smallY(): Float = height * 0.82f
+    private fun smallR(): Float = min(width * 0.14f, 44f * d)
+
+    override fun step(dt: Float) {
+        if (moveT > 0f) {
+            moveT += dt
+            if (moveT > moveDur) moveT = 0f
+        }
+        for (i in 0 until 4) if (barPress[i] > 0f) barPress[i] = max(0f, barPress[i] - dt)
+        if (bigPress > 0f) bigPress = max(0f, bigPress - dt)
+        if (smallPress > 0f) smallPress = max(0f, smallPress - dt)
+        if (bellT > 0f) bellT = max(0f, bellT - dt)
+        for (n in notes) {
+            n.t += dt
+            n.y -= 70f * d * dt
+        }
+        notes.removeAll { it.t > 1.3f }
+        if (celebrate > 0f) {
+            celebrate -= dt
+            if (celebrate <= 0f) taps = 0
+        }
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        val a = e.actionMasked
+        if (a == MotionEvent.ACTION_DOWN || a == MotionEvent.ACTION_POINTER_DOWN) {
+            val i = e.actionIndex
+            hitAt(e.getX(i), e.getY(i))
+        }
+        return true
+    }
+
+    private fun played(kind: Int, param: Int, x: Float, y: Float, color: Int) {
+        moveType = kind
+        moveParam = param
+        moveT = 0.0001f
+        notes.add(Note(x, y - 10f * d, color))
+        taps++
+        if (taps >= goal && celebrate <= 0f) {
+            celebrate = 2.4f
+            onRound?.invoke()
+        }
+    }
+
+    private fun hitAt(x: Float, y: Float) {
+        val bdx = x - bellX()
+        val bdy = y - bellY()
+        if (sqrt(bdx * bdx + bdy * bdy) < bellS() * 1.3f) {
+            bellT = 1.2f
+            Sounds.playInstrument(context, Sounds.INSTR_BELL)
+            played(2, 0, bellX(), bellY(), PALETTE[2])
+            return
+        }
+        for (i in 0 until 4) {
+            if (abs(x - barX(i)) < barW() / 2f && y >= barTop() && y <= barTop() + barH(i)) {
+                barPress[i] = 0.25f
+                Sounds.playInstrument(context, Sounds.INSTR_XYLO, i)
+                played(3, i, barX(i), barTop(), PALETTE[i])
+                return
+            }
+        }
+        if (abs(x - smallX()) < smallR() && y >= smallY() - smallR() * 0.4f && y <= smallY() + smallR()) {
+            smallPress = 0.2f
+            Sounds.playInstrument(context, Sounds.INSTR_SMALL_DRUM)
+            played(1, 0, smallX(), smallY() - smallR() * 0.4f, PALETTE[1])
+            return
+        }
+        if (abs(x - bigX()) < bigR() && y >= bigY() - bigR() * 0.4f && y <= bigY() + bigR()) {
+            bigPress = 0.25f
+            Sounds.playInstrument(context, Sounds.INSTR_BIG_DRUM)
+            played(0, 0, bigX(), bigY() - bigR() * 0.4f, PALETTE[0])
+        }
+    }
+
+    private fun drawDrum(c: Canvas, cx: Float, cy: Float, r: Float, color: Int, press: Float) {
+        paint.style = Paint.Style.FILL
+        paint.color = color
+        helperRect.set(cx - r, cy, cx + r, cy + r * 0.9f)
+        c.drawRoundRect(helperRect, r * 0.12f, r * 0.12f, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = r * 0.07f
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.color = Color.argb(200, 255, 255, 255)
+        for (k in 0 until 3) {
+            val x = cx - r * 0.6f + k * r * 0.6f
+            c.drawLine(x, cy + r * 0.15f, x + r * 0.3f, cy + r * 0.8f, paint)
+            c.drawLine(x + r * 0.3f, cy + r * 0.15f, x, cy + r * 0.8f, paint)
+        }
+        paint.style = Paint.Style.FILL
+        paint.color = Color.parseColor("#FFF3D6")
+        val squash = 1f - 0.35f * (press / 0.25f).coerceIn(0f, 1f)
+        helperRect.set(cx - r, cy - r * 0.3f * squash, cx + r, cy + r * 0.3f * squash)
+        c.drawOval(helperRect, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = r * 0.09f
+        paint.color = color
+        c.drawOval(helperRect, paint)
+        paint.style = Paint.Style.FILL
+    }
+
+    private fun drawBell(c: Canvas, cx: Float, cy: Float, s: Float, swing: Float) {
+        c.save()
+        c.rotate(swing, cx, cy - s * 0.4f)
+        paint.style = Paint.Style.FILL
+        paint.color = Color.parseColor("#FFC93C")
+        c.drawCircle(cx, cy - s * 0.1f, s * 0.55f, paint)
+        helperPath.reset()
+        helperPath.moveTo(cx - s * 0.55f, cy - s * 0.1f)
+        helperPath.lineTo(cx + s * 0.55f, cy - s * 0.1f)
+        helperPath.lineTo(cx + s * 0.85f, cy + s * 0.6f)
+        helperPath.lineTo(cx - s * 0.85f, cy + s * 0.6f)
+        helperPath.close()
+        c.drawPath(helperPath, paint)
+        paint.color = Color.parseColor("#E5A91E")
+        helperRect.set(cx - s * 0.9f, cy + s * 0.5f, cx + s * 0.9f, cy + s * 0.72f)
+        c.drawRoundRect(helperRect, s * 0.1f, s * 0.1f, paint)
+        paint.color = Color.parseColor("#7A4B2A")
+        c.drawCircle(cx, cy + s * 0.8f, s * 0.17f, paint)
+        paint.color = Color.argb(150, 255, 255, 255)
+        c.drawCircle(cx - s * 0.25f, cy - s * 0.25f, s * 0.12f, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = s * 0.1f
+        paint.color = Color.parseColor("#7A4B2A")
+        c.drawCircle(cx, cy - s * 0.78f, s * 0.2f, paint)
+        paint.style = Paint.Style.FILL
+        c.restore()
+    }
+
+    private fun drawNote(c: Canvas, n: Note) {
+        val alpha = (255f * (1f - n.t / 1.3f)).toInt().coerceIn(0, 255)
+        paint.style = Paint.Style.FILL
+        paint.color = withAlpha(n.color, alpha)
+        c.drawCircle(n.x, n.y, 6f * d, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2.4f * d
+        paint.strokeCap = Paint.Cap.ROUND
+        c.drawLine(n.x + 5.5f * d, n.y, n.x + 5.5f * d, n.y - 20f * d, paint)
+        c.drawLine(n.x + 5.5f * d, n.y - 20f * d, n.x + 13f * d, n.y - 12f * d, paint)
+        paint.style = Paint.Style.FILL
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        paint.style = Paint.Style.FILL
+        paint.shader = LinearGradient(0f, 0f, 0f, h, Color.parseColor("#3A2B6B"), Color.parseColor("#7A5CC9"), Shader.TileMode.CLAMP)
+        canvas.drawRect(0f, 0f, w, h, paint)
+        paint.shader = null
+        // the stage floor and the curtains at the sides
+        paint.color = Color.parseColor("#B07A47")
+        canvas.drawRect(0f, h * 0.9f, w, h, paint)
+        paint.color = Color.parseColor("#C9322F")
+        helperRect.set(-w * 0.12f, -h * 0.05f, w * 0.1f, h * 0.9f)
+        canvas.drawRoundRect(helperRect, w * 0.1f, w * 0.1f, paint)
+        helperRect.set(w * 0.9f, -h * 0.05f, w * 1.12f, h * 0.9f)
+        canvas.drawRoundRect(helperRect, w * 0.1f, w * 0.1f, paint)
+
+        // a dot for every two touches: the song grows
+        val gap = 24f * d
+        for (i in 0 until goal / 2) {
+            paint.style = Paint.Style.FILL
+            paint.color = if (i < taps / 2) Color.parseColor("#FFC93C") else Color.argb(90, 255, 255, 255)
+            canvas.drawCircle(w / 2f + (i - (goal / 2 - 1) / 2f) * gap, 52f * d, 6.5f * d, paint)
+        }
+
+        drawBell(canvas, bellX(), bellY(), bellS(), sin(clock * 14f) * 20f * (bellT / 1.2f))
+
+        // the xylophone
+        for (i in 0 until 4) {
+            val press = barPress[i] / 0.25f
+            val top = barTop() + press * 5f * d
+            paint.style = Paint.Style.FILL
+            paint.color = Color.argb(60, 0, 0, 0)
+            helperRect.set(barX(i) - barW() / 2f + 2f * d, top + 5f * d, barX(i) + barW() / 2f + 2f * d, top + barH(i) + 5f * d)
+            canvas.drawRoundRect(helperRect, 10f * d, 10f * d, paint)
+            paint.color = PALETTE[i]
+            helperRect.set(barX(i) - barW() / 2f, top, barX(i) + barW() / 2f, top + barH(i))
+            canvas.drawRoundRect(helperRect, 10f * d, 10f * d, paint)
+            paint.color = Color.argb(110, 255, 255, 255)
+            canvas.drawCircle(barX(i), top + 12f * d, 4f * d, paint)
+            canvas.drawCircle(barX(i), top + barH(i) - 12f * d, 4f * d, paint)
+        }
+
+        drawDrum(canvas, bigX(), bigY(), bigR(), Color.parseColor("#E5484D"), bigPress)
+        drawDrum(canvas, smallX(), smallY(), smallR(), Color.parseColor("#4DA3FF"), smallPress)
+
+        // the ghost dances with what was just played
+        val u = if (moveT > 0f) moveT / moveDur else 0f
+        var dy = 0f
+        var sx = 1f
+        var sy = 1f
+        var rot = sin(clock * 2f) * 2f
+        when (moveType) {
+            0 -> {
+                val e = sin(PI.toFloat() * u)
+                sx = 1f + 0.16f * e
+                sy = 1f - 0.16f * e
+                dy = gr() * 0.1f * e
+            }
+            1 -> dy = -abs(sin(PI.toFloat() * u)) * gr() * 0.5f
+            2 -> rot = sin(u * 12.566f) * 14f * (1f - u)
+            3 -> {
+                dy = -sin(PI.toFloat() * u) * gr() * (0.3f + 0.1f * moveParam)
+                rot = (moveParam - 1.5f) * 5f * sin(PI.toFloat() * u)
+            }
+        }
+        if (moveT <= 0f) {
+            sx = 1f
+            sy = 1f
+        }
+        if (celebrate > 0f) dy = -abs(sin(clock * 7f)) * gr() * 0.5f
+        canvas.save()
+        canvas.translate(gx(), gy() + dy)
+        canvas.rotate(rot)
+        canvas.scale(sx, sy)
+        drawCuteGhost(canvas, paint, 0f, 0f, gr(), clock, 0f)
+        canvas.restore()
+        for (n in notes) drawNote(canvas, n)
+        if (celebrate > 0f) drawCelebration(canvas, paint, gx(), gy(), clock, d)
+    }
+}
+
 // ============================================================ screens
 
 private class GameTileView(context: Context, private val game: Int) : View(context) {
@@ -2191,6 +2806,38 @@ private class GameTileView(context: Context, private val game: Int) : View(conte
                 canvas.drawCircle(cx - 0.26f * s, cy + bob, 0.19f * s, paint)
                 paint.style = Paint.Style.FILL
             }
+            MiniGames.GAME_ANIMALS -> {
+                drawAnimal(canvas, paint, 2, cx - 0.12f * s, cy + 0.04f * s + bob, 0.2f * s)
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 3.5f * d
+                paint.strokeCap = Paint.Cap.ROUND
+                paint.color = Color.parseColor("#7C5CFF")
+                for (n in 0 until 2) {
+                    helperRect.set(cx + 0.18f * s, cy - 0.26f * s - n * 0.06f * s, cx + 0.34f * s + n * 0.1f * s, cy - 0.04f * s + n * 0.06f * s)
+                    canvas.drawArc(helperRect, -50f, 100f, false, paint)
+                }
+                paint.style = Paint.Style.FILL
+            }
+            MiniGames.GAME_BAND -> {
+                paint.style = Paint.Style.FILL
+                paint.color = PALETTE[0]
+                helperRect.set(cx - 0.3f * s, cy + 0.04f * s + bob, cx + 0.1f * s, cy + 0.3f * s + bob)
+                canvas.drawRoundRect(helperRect, 6f * d, 6f * d, paint)
+                paint.color = Color.parseColor("#FFF3D6")
+                helperRect.set(cx - 0.3f * s, cy - 0.04f * s + bob, cx + 0.1f * s, cy + 0.12f * s + bob)
+                canvas.drawOval(helperRect, paint)
+                paint.color = Color.parseColor("#FFC93C")
+                canvas.drawCircle(cx + 0.22f * s, cy - 0.14f * s - bob, 0.1f * s, paint)
+                helperPath.reset()
+                helperPath.moveTo(cx + 0.1f * s, cy - 0.14f * s - bob)
+                helperPath.lineTo(cx + 0.34f * s, cy - 0.14f * s - bob)
+                helperPath.lineTo(cx + 0.38f * s, cy + 0.06f * s - bob)
+                helperPath.lineTo(cx + 0.06f * s, cy + 0.06f * s - bob)
+                helperPath.close()
+                canvas.drawPath(helperPath, paint)
+                paint.color = PALETTE[1]
+                canvas.drawCircle(cx - 0.16f * s, cy - 0.2f * s - bob, 0.045f * s, paint)
+            }
             MiniGames.GAME_TWINS -> {
                 drawBookItem(canvas, paint, 0, cx - 0.27f * s, cy + bob, 0.1f * s)
                 drawBookItem(canvas, paint, 1, cx, cy - bob, 0.1f * s)
@@ -2221,7 +2868,7 @@ private fun gameBackground(): GradientDrawable =
         intArrayOf(Color.parseColor("#BDE6FF"), Color.parseColor("#F5F3FF"))
     )
 
-/** The small games as big picture cards, two in a row. */
+/** The small games as big picture cards, three in a row. */
 class MiniGamesActivity : Activity() {
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
@@ -2235,11 +2882,12 @@ class MiniGamesActivity : Activity() {
             MiniGames.GAME_BUBBLES, MiniGames.GAME_GHOST_BUBBLES,
             MiniGames.GAME_SHAPES, MiniGames.GAME_WHICH,
             MiniGames.GAME_COLORS, MiniGames.GAME_TWINS,
-            MiniGames.GAME_BUTTERFLY, MiniGames.GAME_BALL
+            MiniGames.GAME_BUTTERFLY, MiniGames.GAME_BALL,
+            MiniGames.GAME_BAND, MiniGames.GAME_ANIMALS
         )
         val dm = resources.displayMetrics
-        val rows = (games.size + 1) / 2
-        val side = max(dp(80), min(min((dm.widthPixels - dp(48)) / 2, (dm.heightPixels - dp(150)) / rows - dp(12)), dp(150)))
+        val rows = (games.size + 2) / 3
+        val side = max(dp(76), min(min((dm.widthPixels - dp(48)) / 3, (dm.heightPixels - dp(150)) / rows - dp(12)), dp(150)))
 
         val column = LinearLayout(this)
         column.orientation = LinearLayout.VERTICAL
@@ -2249,8 +2897,8 @@ class MiniGamesActivity : Activity() {
             val line = LinearLayout(this)
             line.orientation = LinearLayout.HORIZONTAL
             line.gravity = Gravity.CENTER
-            for (c in 0 until 2) {
-                val index = r * 2 + c
+            for (c in 0 until 3) {
+                val index = r * 3 + c
                 if (index >= games.size) continue
                 val game = games[index]
                 val tile = GameTileView(this, game)
@@ -2258,7 +2906,7 @@ class MiniGamesActivity : Activity() {
                     startActivity(Intent(this, MiniGameActivity::class.java).putExtra(MiniGameActivity.EXTRA_GAME, game))
                 }
                 val lp = LinearLayout.LayoutParams(side, side)
-                lp.setMargins(dp(6), dp(6), dp(6), dp(6))
+                lp.setMargins(dp(5), dp(6), dp(5), dp(6))
                 line.addView(tile, lp)
             }
             column.addView(
@@ -2303,6 +2951,8 @@ class MiniGameActivity : Activity() {
             MiniGames.GAME_BALL -> BallView(this)
             MiniGames.GAME_WHICH -> WhichShapeView(this)
             MiniGames.GAME_TWINS -> TwinsView(this)
+            MiniGames.GAME_BAND -> BandView(this)
+            MiniGames.GAME_ANIMALS -> AnimalSoundView(this)
             else -> BubblesView(this)
         }
         view.onRound = { MiniGames.reward(this) }
