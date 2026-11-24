@@ -46,6 +46,7 @@ object MiniGames {
     const val GAME_TWINS = 10
     const val GAME_BAND = 11
     const val GAME_ANIMALS = 12
+    const val GAME_PEEKABOO = 13
 
     private const val PREFS = "ghost_goals"
     private const val KEY_DAY = "mg_day"
@@ -101,6 +102,12 @@ object MiniGames {
 
     fun animalStage(context: Context): Int = stageOf(context, "animal_stage", ANIMAL_STAGES)
     fun setAnimalStage(context: Context, stage: Int) = setStageOf(context, "animal_stage", stage, ANIMAL_STAGES)
+
+    /** The peekaboo game has three stages: one cloud, then two, then three. */
+    const val PEEK_STAGES = 3
+
+    fun peekabooStage(context: Context): Int = stageOf(context, "peekaboo_stage", PEEK_STAGES)
+    fun setPeekabooStage(context: Context, stage: Int) = setStageOf(context, "peekaboo_stage", stage, PEEK_STAGES)
 
     fun butterflyStage(context: Context): Int = stageOf(context, "butterfly_stage", BUTTERFLY_STAGES)
     fun setButterflyStage(context: Context, stage: Int) = setStageOf(context, "butterfly_stage", stage, BUTTERFLY_STAGES)
@@ -2727,6 +2734,175 @@ private class BandView(context: Context) : GameView(context) {
 
 // ============================================================ screens
 
+// ============================================================ game 13: where is the ghost?
+
+/** A soft cloud made of a few round puffs on a rounded base; the ghost hides behind it. */
+internal fun drawCloud(c: Canvas, p: Paint, cx: Float, cy: Float, w: Float, color: Int = Color.WHITE) {
+    p.style = Paint.Style.FILL
+    p.color = Color.argb(40, 90, 70, 150)
+    helperRect.set(cx - 0.4f * w, cy - 0.02f * w, cx + 0.4f * w, cy + 0.24f * w)
+    c.drawRoundRect(helperRect, 0.12f * w, 0.12f * w, p)
+    p.color = color
+    helperRect.set(cx - 0.4f * w, cy - 0.06f * w, cx + 0.4f * w, cy + 0.2f * w)
+    c.drawRoundRect(helperRect, 0.12f * w, 0.12f * w, p)
+    c.drawCircle(cx - 0.2f * w, cy - 0.04f * w, 0.16f * w, p)
+    c.drawCircle(cx + 0.02f * w, cy - 0.14f * w, 0.22f * w, p)
+    c.drawCircle(cx + 0.24f * w, cy - 0.03f * w, 0.15f * w, p)
+}
+
+/**
+ * Peekaboo for the youngest: the ghost hides behind a cloud and the child taps to find it. With one cloud any
+ * touch finds the ghost; with two and three clouds the child chooses. A wrong cloud only bounces and shows a
+ * little star (never a sad sound). Four finds make a round.
+ */
+private class PeekabooView(context: Context) : GameView(context) {
+
+    private val goal = 4
+    private var stage = MiniGames.peekabooStage(context)
+    private var n = stage + 1
+    private var ghostAt = 0
+    private var phase = 0 // 0 hidden, 1 found (the ghost is out), 2 going back behind the cloud
+    private var rise = 0f
+    private var phaseTime = 0f
+    private var idle = 0f
+    private val wob = FloatArray(3)
+    private val bump = FloatArray(3)
+    private var found = 0
+    private var celebrate = 0f
+    private var bg: Shader? = null
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        bg = sky(h)
+        setup()
+    }
+
+    private fun setup() {
+        n = stage + 1
+        ghostAt = Random.nextInt(n)
+        phase = 0
+        rise = 0f
+        phaseTime = 0f
+        idle = 0f
+        wob.fill(0f)
+        bump.fill(0f)
+    }
+
+    private fun cw(): Float = min(150f * d, width / (n + 0.5f))
+    private fun cloudX(i: Int): Float = width * (i + 1f) / (n + 1f)
+    private fun cloudY(i: Int): Float = height * 0.56f + (if (i % 2 == 1) 0.14f * cw() else 0f)
+
+    override fun step(dt: Float) {
+        for (i in 0 until 3) {
+            if (wob[i] > 0f) wob[i] = max(0f, wob[i] - dt)
+            if (bump[i] > 0f) bump[i] = max(0f, bump[i] - dt)
+        }
+        if (celebrate > 0f) {
+            rise = min(1f, rise + dt / 0.35f)
+            celebrate -= dt
+            if (celebrate <= 0f) {
+                found = 0
+                stage = MiniGames.peekabooStage(context)
+                setup()
+            }
+            return
+        }
+        when (phase) {
+            0 -> {
+                idle += dt
+                val after = 2.5f + 2f * stage
+                if (idle > after) {
+                    wob[ghostAt] = 0.7f // a little wiggle: the ghost is here
+                    idle = after - 3.5f
+                }
+            }
+            1 -> {
+                rise = min(1f, rise + dt / 0.35f)
+                phaseTime += dt
+                if (phaseTime > 1.6f) phase = 2
+            }
+            else -> {
+                rise = max(0f, rise - dt / 0.35f)
+                if (rise <= 0f) {
+                    phase = 0
+                    idle = 0f
+                    ghostAt = if (n > 1) (ghostAt + 1 + Random.nextInt(n - 1)) % n else 0
+                }
+            }
+        }
+    }
+
+    private fun findGhost() {
+        phase = 1
+        phaseTime = 0f
+        found++
+        Sounds.play(context, Snd.GIGGLE)
+        if (found >= goal) {
+            celebrate = 2.4f
+            onRound?.invoke()
+            MiniGames.setPeekabooStage(context, (stage + 1) % MiniGames.PEEK_STAGES)
+        }
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (e.actionMasked != MotionEvent.ACTION_DOWN || celebrate > 0f || phase != 0) return true
+        if (n == 1) {
+            findGhost()
+            return true
+        }
+        val w = cw()
+        for (i in 0 until n) {
+            if (abs(e.x - cloudX(i)) < w * 0.55f && abs(e.y - cloudY(i)) < w * 0.42f) {
+                if (i == ghostAt) {
+                    findGhost()
+                } else {
+                    bump[i] = 0.5f
+                    Sounds.play(context, Snd.BOING)
+                }
+                break
+            }
+        }
+        return true
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val w = width.toFloat()
+        paintBackground(canvas, bg)
+        paint.style = Paint.Style.FILL
+        paint.color = Color.parseColor("#CFF0C9")
+        helperRect.set(-w * 0.2f, height * 0.8f, w * 1.2f, height * 1.4f)
+        canvas.drawOval(helperRect, paint)
+
+        val gap = 26f * d
+        val x0 = w / 2f - (goal - 1) * gap / 2f
+        for (i in 0 until goal) {
+            paint.color = if (i < found) Color.parseColor("#FFC93C") else Color.parseColor("#D8D2F0")
+            canvas.drawCircle(x0 + i * gap, 70f * d, 9f * d, paint)
+        }
+
+        val cwid = cw()
+        for (i in 0 until n) {
+            val isGhost = i == ghostAt
+            val ease = if (isGhost) rise * rise * (3f - 2f * rise) else 0f
+            val x = cloudX(i) + sin(clock * 24f) * 4f * d * (wob[i] / 0.7f)
+            val bounce = if (bump[i] > 0f) sin((0.5f - bump[i]) / 0.5f * PI.toFloat()) * 12f * d else 0f
+            val cy = cloudY(i) - bounce
+            if (isGhost && rise > 0f) {
+                val r = 0.18f * cwid * (1f + 0.25f * ease)
+                drawCuteGhost(canvas, paint, x, cy - 0.06f * cwid - ease * 0.5f * cwid, r, clock, if (ease > 0.6f) 1f else 0f)
+            }
+            drawCloud(canvas, paint, x, cy + ease * 0.08f * cwid, cwid)
+            if (bump[i] > 0f) {
+                val k = 1f - bump[i] / 0.5f
+                paint.style = Paint.Style.FILL
+                paint.color = withAlpha(Color.parseColor("#FFC93C"), (255 * (1f - k)).toInt())
+                canvas.drawPath(starPath(x, cy - 0.34f * cwid - k * 0.3f * cwid, 9f * d), paint)
+            }
+        }
+        if (celebrate > 0f) drawCelebration(canvas, paint, cloudX(ghostAt), cloudY(ghostAt) - 0.5f * cwid, clock, d)
+    }
+}
+
 private class GameTileView(context: Context, private val game: Int) : View(context) {
 
     private val d = resources.displayMetrics.density
@@ -2813,6 +2989,10 @@ private class GameTileView(context: Context, private val game: Int) : View(conte
                 drawButterfly(canvas, paint, cx, cy + bob, 0.26f * s, PALETTE[0], clock * 6f)
                 drawButterfly(canvas, paint, cx - 0.28f * s, cy - 0.2f * s - bob, 0.14f * s, PALETTE[1], clock * 7f + 1f)
             }
+            MiniGames.GAME_PEEKABOO -> {
+                drawCuteGhost(canvas, paint, cx, cy - 0.04f * s + bob, 0.15f * s, clock, 0f)
+                drawCloud(canvas, paint, cx, cy + 0.2f * s, 0.62f * s)
+            }
             MiniGames.GAME_BALL -> drawBall(canvas, paint, 1, cx, cy + bob, 0.22f * s, 0, clock * 60f)
             MiniGames.GAME_WHICH -> {
                 drawShape(canvas, paint, 0, cx - 0.26f * s, cy + bob, 0.13f * s, PALETTE[0], false, d)
@@ -2897,7 +3077,7 @@ class MiniGamesActivity : Activity() {
         root.background = gameBackground()
 
         val games = intArrayOf(
-            MiniGames.GAME_BUBBLES, MiniGames.GAME_GHOST_BUBBLES,
+            MiniGames.GAME_PEEKABOO, MiniGames.GAME_BUBBLES, MiniGames.GAME_GHOST_BUBBLES,
             MiniGames.GAME_SHAPES, MiniGames.GAME_WHICH,
             MiniGames.GAME_COLORS, MiniGames.GAME_TWINS,
             MiniGames.GAME_BUTTERFLY, MiniGames.GAME_BALL,
@@ -2971,6 +3151,7 @@ class MiniGameActivity : Activity() {
             MiniGames.GAME_TWINS -> TwinsView(this)
             MiniGames.GAME_BAND -> BandView(this)
             MiniGames.GAME_ANIMALS -> AnimalSoundView(this)
+            MiniGames.GAME_PEEKABOO -> PeekabooView(this)
             else -> BubblesView(this)
         }
         view.onRound = { MiniGames.roundDone(this, game) }

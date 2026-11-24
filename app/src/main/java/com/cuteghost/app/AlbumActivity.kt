@@ -202,6 +202,10 @@ private class AlbumView(context: Context) : View(context) {
                 c.drawArc(rect, -50f, 100f, false, paint)
                 paint.style = Paint.Style.FILL
             }
+            "game_peekaboo" -> {
+                drawCuteGhost(c, paint, cx, cy - 0.15f * r, 0.4f * r, t, 0f)
+                drawCloud(c, paint, cx, cy + 0.3f * r, 1.5f * r)
+            }
             "game_counting" -> {
                 box(c, cx - 0.8f * r, cy - 0.55f * r, cx - 0.02f * r, cy + 0.55f * r, 0.1f * r, Color.WHITE)
                 box(c, cx + 0.02f * r, cy - 0.55f * r, cx + 0.8f * r, cy + 0.55f * r, 0.1f * r, Color.WHITE)

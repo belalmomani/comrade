@@ -38,6 +38,7 @@ object Album {
         Sticker("game_ball", GAMES),
         Sticker("game_band", GAMES),
         Sticker("game_animals", GAMES),
+        Sticker("game_peekaboo", GAMES),
         Sticker("game_counting", GAMES),
         Sticker("game_doctor", GAMES),
         Sticker("game_class", GAMES),
@@ -111,6 +112,7 @@ object Album {
         MiniGames.GAME_TWINS -> "game_twins"
         MiniGames.GAME_BAND -> "game_band"
         MiniGames.GAME_ANIMALS -> "game_animals"
+        MiniGames.GAME_PEEKABOO -> "game_peekaboo"
         else -> ""
     }
 
