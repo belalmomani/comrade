@@ -59,6 +59,11 @@
             android:screenOrientation="portrait" />
 
         <activity
+            android:name=".AlbumActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <activity
             android:name=".MiniGamesActivity"
             android:exported="false"
             android:screenOrientation="portrait" />

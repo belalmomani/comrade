@@ -46,6 +46,7 @@ object Treasure {
             .putInt(KEY_FOUND_DAY, DailyGoals.dayNumber())
             .putInt(KEY_TOTAL, p.getInt(KEY_TOTAL, 0) + 1)
             .apply()
+        Album.unlock(context, "treasure_" + arrayOf("chest", "gem", "star")[kind()])
         Village.addCoins(context, REWARD_COINS)
         HomeStore.addMaterials(context, REWARD_MATERIALS)
         return Wardrobe.addStars(context, REWARD_STARS)

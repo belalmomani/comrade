@@ -49,6 +49,7 @@ object Civic {
         if (!Village.spendCoins(context, cost(id))) return false
         val p = prefs(context)
         p.edit().putInt(KEY_BUILT, p.getInt(KEY_BUILT, 0) or (1 shl id)).apply()
+        Album.unlock(context, "civic_" + arrayOf("park", "toys", "school", "library", "hospital")[id])
         return true
     }
 
@@ -82,6 +83,7 @@ object Civic {
         val pick = missing[Random.nextInt(missing.size)]
         p.edit().putInt(KEY_TOYS, have or (1 shl pick)).putInt(KEY_TOY_DAY, today).apply()
         Village.addCoins(context, TOY_COINS)
+        if (Integer.bitCount(have or (1 shl pick)) >= TOY_KINDS) Album.unlock(context, "discover_all_toys")
         return pick
     }
 }

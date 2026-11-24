@@ -2,6 +2,7 @@ package com.cuteghost.app
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -39,6 +40,12 @@ class GoalsActivity : Activity() {
         val lp = FrameLayout.LayoutParams(dp(56), dp(56), Gravity.TOP or Gravity.START)
         lp.setMargins(dp(12), dp(36), dp(12), dp(12))
         root.addView(back, lp)
+        // the sticker album
+        val album = IconButtonView(this, IconButtonView.ALBUM, Color.parseColor("#7C5CFF"))
+        album.setOnClickListener { startActivity(Intent(this, AlbumActivity::class.java)) }
+        val alp = FrameLayout.LayoutParams(dp(56), dp(56), Gravity.TOP or Gravity.END)
+        alp.setMargins(dp(12), dp(36), dp(12), dp(12))
+        root.addView(album, alp)
         setContentView(root)
     }
 

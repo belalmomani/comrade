@@ -798,6 +798,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
      */
     private fun graduate(b: GhostWindow) {
         if (destroyed || b !in babies || b in dying) return
+        Album.unlock(this, "family_first_grown")
         val m = mother ?: return
         if (m in dying) return
         if (activeSession != null || bedtimeActive || b.isMoving || m.userDragging) {
@@ -1282,6 +1283,8 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
 
     /** The egg finished hatching: the newborn takes its place with its own colour. */
     override fun onHatched(egg: EggWindow) {
+        Album.unlock(this, "family_first_egg")
+        if (egg.mystery) Album.unlock(this, "family_first_twins")
         val wm = windowManager
         if (wm != null) {
             val b = GhostWindow(
@@ -1453,6 +1456,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         }
         if (ok) {
             seasonWindow = sw
+            Album.unlock(this, Album.seasonStickerId(season))
             if (season == SEASON_RAIN) {
                 notice?.show(getString(R.string.rain_message), 6_000L)
                 rainActive = true

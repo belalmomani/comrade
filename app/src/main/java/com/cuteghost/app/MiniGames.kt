@@ -107,6 +107,16 @@ object MiniGames {
     fun twinsStage(context: Context): Int = stageOf(context, "twins_stage", TWINS_STAGES)
     fun setTwinsStage(context: Context, stage: Int) = setStageOf(context, "twins_stage", stage, TWINS_STAGES)
 
+    /**
+     * A round of [game] was finished: the round's star as before, the game's daily challenge (the first round of
+     * each game each day), and the game's sticker the first time ever.
+     */
+    fun roundDone(context: Context, game: Int) {
+        reward(context)
+        Challenges.completeDaily(context, "daily_game_" + game, 1)
+        Album.unlock(context, Album.gameStickerId(game))
+    }
+
     /** At most this many golden-bubble stars a day. */
     const val DAILY_GOLD_CAP = 5
 
@@ -139,7 +149,13 @@ object MiniGames {
     }
 
     /** A round was finished. Returns true when it gave a star (the day's limit stops the stars, not the fun). */
-    fun reward(context: Context): Boolean {
+    fun reward(context: Context): Boolean = grantStar(context)
+
+    /**
+     * One star from the games, inside the daily limit shared by the rounds and the daily challenges.
+     * Returns false (and gives nothing) once the limit of the day was reached.
+     */
+    fun grantStar(context: Context): Boolean {
         val p = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val today = DailyGoals.dayNumber()
         val n = if (p.getInt(KEY_DAY, -1) == today) p.getInt(KEY_COUNT, 0) else 0
@@ -152,7 +168,7 @@ object MiniGames {
 
 // ============================================================ drawing helpers
 
-private val PALETTE = intArrayOf(
+internal val PALETTE = intArrayOf(
     Color.parseColor("#FF6B6B"), Color.parseColor("#4DA3FF"),
     Color.parseColor("#FFC93C"), Color.parseColor("#4CC38A")
 )
@@ -175,7 +191,7 @@ private val PATIENT_ORDERS = arrayOf(intArrayOf(0, 1, 2), intArrayOf(1, 0, 2), i
 private val helperPath = Path()
 private val helperRect = RectF()
 
-private fun withAlpha(color: Int, alpha: Int): Int =
+internal fun withAlpha(color: Int, alpha: Int): Int =
     Color.argb(alpha.coerceIn(0, 255), Color.red(color), Color.green(color), Color.blue(color))
 
 private fun starPath(cx: Float, cy: Float, r: Float): Path {
@@ -192,7 +208,7 @@ private fun starPath(cx: Float, cy: Float, r: Float): Path {
 }
 
 /** Shape 0 circle, 1 square, 2 triangle, 3 star. A hole is faint with an outline; otherwise it is solid. */
-private fun drawShape(c: Canvas, p: Paint, type: Int, cx: Float, cy: Float, r: Float, color: Int, hole: Boolean, d: Float) {
+internal fun drawShape(c: Canvas, p: Paint, type: Int, cx: Float, cy: Float, r: Float, color: Int, hole: Boolean, d: Float) {
     val steps = if (hole) 2 else 1
     for (pass in 0 until steps) {
         val stroke = hole && pass == 1
@@ -230,7 +246,7 @@ private fun drawShape(c: Canvas, p: Paint, type: Int, cx: Float, cy: Float, r: F
 }
 
 /** The things in the counting book: 0 apple, 1 duck, 2 flower, 3 balloon. A different one each day. */
-private fun drawBookItem(c: Canvas, p: Paint, kind: Int, cx: Float, cy: Float, r: Float) {
+internal fun drawBookItem(c: Canvas, p: Paint, kind: Int, cx: Float, cy: Float, r: Float) {
     p.style = Paint.Style.FILL
     when (kind) {
         0 -> {
@@ -291,7 +307,7 @@ private fun drawBookItem(c: Canvas, p: Paint, kind: Int, cx: Float, cy: Float, r
 }
 
 /** The ghost friend: it floats, and jumps for joy when [joy] is 1. */
-private fun drawCuteGhost(
+internal fun drawCuteGhost(
     c: Canvas, p: Paint, cx: Float, baseY: Float, r: Float, t: Float, joy: Float,
     body: Int = Color.parseColor("#F7F4FF"), sad: Boolean = false
 ) {
@@ -358,6 +374,7 @@ private abstract class GameView(context: Context) : View(context) {
     protected var clock = 0f
     var onRound: (() -> Unit)? = null
     var onStar: (() -> Unit)? = null
+    var onProgress: ((Int) -> Unit)? = null // a game-specific event: for the animal game, the animal that was found
 
     private var last = 0L
     private var running = false
@@ -1267,7 +1284,7 @@ private class ClassroomView(context: Context) : GameView(context) {
 
 private val ballClip = Path()
 
-private fun drawButterfly(c: Canvas, p: Paint, x: Float, y: Float, s: Float, color: Int, flap: Float) {
+internal fun drawButterfly(c: Canvas, p: Paint, x: Float, y: Float, s: Float, color: Int, flap: Float) {
     val w = abs(sin(flap)) * s * 0.9f + s * 0.12f
     p.style = Paint.Style.FILL
     p.color = color
@@ -1294,7 +1311,7 @@ private fun drawButterfly(c: Canvas, p: Paint, x: Float, y: Float, s: Float, col
 }
 
 /** Four kinds of ball: 0 spotted, 1 beach ball, 2 football, 3 striped. */
-private fun drawBall(c: Canvas, p: Paint, type: Int, cx: Float, cy: Float, r: Float, colorIndex: Int, angle: Float) {
+internal fun drawBall(c: Canvas, p: Paint, type: Int, cx: Float, cy: Float, r: Float, colorIndex: Int, angle: Float) {
     p.style = Paint.Style.FILL
     when (type) {
         0 -> {
@@ -2103,7 +2120,7 @@ private class TwinsView(context: Context) : GameView(context) {
 // ============================================================ animals (for the animal sounds game)
 
 /** Faces of 0 cat, 1 duck, 2 cow, 3 dog, 4 sheep, drawn in a circle of radius [r]. */
-private fun drawAnimal(c: Canvas, p: Paint, kind: Int, cx: Float, cy: Float, r: Float) {
+internal fun drawAnimal(c: Canvas, p: Paint, kind: Int, cx: Float, cy: Float, r: Float) {
     val dark = Color.parseColor("#2B2540")
     p.style = Paint.Style.FILL
     when (kind) {
@@ -2350,6 +2367,7 @@ private class AnimalSoundView(context: Context) : GameView(context) {
                     bounce[i] = 0.6f
                     correct++
                     Sounds.playAnimal(context, target)
+                    onProgress?.invoke(target)
                     if (correct >= goal) {
                         celebrate = 2.6f
                         onRound?.invoke()
@@ -2955,8 +2973,12 @@ class MiniGameActivity : Activity() {
             MiniGames.GAME_ANIMALS -> AnimalSoundView(this)
             else -> BubblesView(this)
         }
-        view.onRound = { MiniGames.reward(this) }
-        view.onStar = { MiniGames.goldenStar(this) }
+        view.onRound = { MiniGames.roundDone(this, game) }
+        view.onStar = {
+            Album.unlock(this, "discover_golden_bubble")
+            MiniGames.goldenStar(this)
+        }
+        view.onProgress = { animal -> Album.animalHit(this, animal) }
 
         val root = FrameLayout(this)
         root.addView(

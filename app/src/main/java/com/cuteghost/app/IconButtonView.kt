@@ -54,6 +54,7 @@ class IconButtonView(context: Context, private val kind: Int, private val color:
         const val SCHOOL = 31
         const val LIBRARY = 32
         const val HOSPITAL = 33
+        const val ALBUM = 34
 
         fun forCategory(cat: FCat): Int = CAT_BED + cat.ordinal
     }
@@ -197,6 +198,19 @@ class IconButtonView(context: Context, private val kind: Int, private val color:
                 c.drawCircle(43f, 36f, 3f, fill)
                 c.drawCircle(57f, 36f, 3f, fill)
                 c.drawCircle(50f, 44f, 4f, fill)
+            }
+            ALBUM -> {
+                // a sticker book: a page with a golden star and coloured stickers
+                f(white)
+                rr(c, 22f, 18f, 78f, 82f, 7f, white)
+                f(Color.parseColor("#FFC93C"))
+                c.drawCircle(50f, 40f, 14f, fill)
+                f(Color.parseColor("#FF6B6B"))
+                c.drawCircle(36f, 68f, 6f, fill)
+                f(Color.parseColor("#4DA3FF"))
+                c.drawCircle(50f, 68f, 6f, fill)
+                f(Color.parseColor("#4CC38A"))
+                c.drawCircle(64f, 68f, 6f, fill)
             }
             LIBRARY -> {
                 // an open book
