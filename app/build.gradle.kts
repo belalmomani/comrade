@@ -7,7 +7,10 @@ plugins {
 // For Google Play this is the UPLOAD key. Keep a backup of it: losing it means a support request to Google.
 val keystorePath: String? = System.getenv("GHOST_KEYSTORE_PATH")
 val keystorePassword: String? = System.getenv("GHOST_KEYSTORE_PASSWORD")
-val keyAliasName: String = System.getenv("GHOST_KEY_ALIAS") ?: "cuteghost"
+fun envOf(vararg names: String): String? = names.map { System.getenv(it) }.firstOrNull { !it.isNullOrBlank() }
+// The key alias / key password can be supplied as GHOST_KEY_* or ANDROID_KEY_* secrets (the first one that is set wins)
+val keyAliasName: String = envOf("GHOST_KEY_ALIAS", "ANDROID_KEY_ALIAS") ?: "cuteghost"
+val keyPasswordValue: String? = envOf("GHOST_KEY_PASSWORD", "ANDROID_KEY_PASSWORD") ?: keystorePassword
 
 fun clean(value: String?): String = (value ?: "").replace("\"", "").replace("\\", "").trim()
 
@@ -58,7 +61,7 @@ android {
                 storeFile = file(keystorePath!!)
                 storePassword = keystorePassword
                 keyAlias = keyAliasName
-                keyPassword = keystorePassword
+                keyPassword = keyPasswordValue
             }
         }
     }
