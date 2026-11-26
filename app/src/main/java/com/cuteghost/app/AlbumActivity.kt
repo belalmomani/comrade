@@ -43,6 +43,7 @@ class AlbumActivity : Activity() {
         lp.setMargins(dp(12), dp(36), dp(12), dp(12))
         root.addView(back, lp)
         setContentView(root)
+        Edge.apply(this)
     }
 }
 

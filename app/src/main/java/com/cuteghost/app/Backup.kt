@@ -6,7 +6,7 @@ import org.json.JSONObject
 
 /**
  * Saves the child's progress (names, stars, clothes, house, village, farm, goals, stickers) into one small
- * text file, and puts it back on this or another phone. Play time, the update notice and the ad
+ * text file, and puts it back on this or another phone. Play time and the ad
  * counters are deliberately left out.
  */
 object Backup {

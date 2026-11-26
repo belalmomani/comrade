@@ -63,6 +63,8 @@ class PlaygroundActivity : Activity() {
         root.layoutDirection = View.LAYOUT_DIRECTION_RTL
         root.setBackgroundColor(Color.parseColor("#BFE3FF"))
         setContentView(root)
+        Edge.apply(this)
+        Edge.onBack(this) { if (inGame) showPlayground() else finish() }
         showPlayground()
     }
 
@@ -79,6 +81,7 @@ class PlaygroundActivity : Activity() {
         root.removeCallbacks(ticker)
     }
 
+    @Suppress("DEPRECATION")
     override fun onBackPressed() {
         if (inGame) showPlayground() else super.onBackPressed()
     }

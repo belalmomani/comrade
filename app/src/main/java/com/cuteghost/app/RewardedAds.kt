@@ -4,6 +4,16 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
+import com.google.android.gms.ads.AdError
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.AdSize
+import com.google.android.gms.ads.AdView
+import com.google.android.gms.ads.FullScreenContentCallback
+import com.google.android.gms.ads.LoadAdError
+import com.google.android.gms.ads.MobileAds
+import com.google.android.gms.ads.RequestConfiguration
+import com.google.android.gms.ads.rewarded.RewardedAd
+import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
 import android.os.Handler
 import android.os.Looper
 import android.text.InputType
@@ -25,46 +35,99 @@ interface AdProvider {
     fun show(activity: Activity, onResult: (Boolean) -> Unit)
 }
 
-/** Used until a real provider is set up: it shows nothing and says that no ad is available. */
-object NoAdProvider : AdProvider {
-    override val name = "none"
-    override fun isReady() = false
-    override fun show(activity: Activity, onResult: (Boolean) -> Unit) {
-        onResult(false)
+/**
+ * Google AdMob rewarded ads, configured for children (Google Play Families policy):
+ * child-directed treatment, under-age-of-consent, G content rating only, no advertising id
+ * (the AD_ID permission is removed in the manifest). Ads are only shown by [RewardedAds.watch],
+ * which asks a grown-up first.
+ */
+object AdMobProvider : AdProvider {
+    override val name = "admob"
+
+    private val main = Handler(Looper.getMainLooper())
+    private var appContext: Context? = null
+    private var started = false
+    private var ready = false
+    private var loading = false
+    private var ad: RewardedAd? = null
+
+    fun start(context: Context) {
+        if (started) {
+            main.post { load() }
+            return
+        }
+        started = true
+        val app = context.applicationContext
+        appContext = app
+        val config = MobileAds.getRequestConfiguration().toBuilder()
+            .setTagForChildDirectedTreatment(RequestConfiguration.TAG_FOR_CHILD_DIRECTED_TREATMENT_TRUE)
+            .setTagForUnderAgeOfConsent(RequestConfiguration.TAG_FOR_UNDER_AGE_OF_CONSENT_TRUE)
+            .setMaxAdContentRating(RequestConfiguration.MAX_AD_CONTENT_RATING_G)
+            .build()
+        MobileAds.setRequestConfiguration(config)
+        MobileAds.initialize(app) {
+            ready = true
+            main.post { load() }
+        }
     }
-}
 
-/** Only for testing the reward flow: a fake "ad", clearly labelled, that lasts three seconds. */
-class TestAdProvider : AdProvider {
-    override val name = "test"
-    override fun isReady() = true
+    private fun load() {
+        val ctx = appContext ?: return
+        if (!ready || loading || ad != null) return
+        loading = true
+        RewardedAd.load(
+            ctx,
+            AdsConfig.REWARDED_UNIT_ID,
+            AdRequest.Builder().build(),
+            object : RewardedAdLoadCallback() {
+                override fun onAdLoaded(loaded: RewardedAd) {
+                    ad = loaded
+                    loading = false
+                }
 
-    override fun show(activity: Activity, onResult: (Boolean) -> Unit) {
-        val handler = Handler(Looper.getMainLooper())
-        var done = false
-        val tv = TextView(activity)
-        tv.text = "إعلان تجريبي (للاختبار فقط)\nتُمنح المكافأة بعد 3 ثوانٍ"
-        tv.textSize = 18f
-        tv.gravity = Gravity.CENTER
-        tv.setPadding(40, 60, 40, 40)
-        val dialog = AlertDialog.Builder(activity)
-            .setView(tv)
-            .setCancelable(false)
-            .setNegativeButton("إغلاق قبل النهاية") { _, _ ->
-                if (!done) {
-                    done = true
-                    onResult(false)
+                override fun onAdFailedToLoad(error: LoadAdError) {
+                    ad = null
+                    loading = false
                 }
             }
-            .create()
-        dialog.show()
-        handler.postDelayed({
-            if (!done) {
-                done = true
-                if (dialog.isShowing) dialog.dismiss()
-                onResult(true)
+        )
+    }
+
+    /** One anchored banner for the grown-ups' panel only (never on the child's screens). */
+    fun createBanner(activity: Activity): AdView {
+        start(activity)
+        val dm = activity.resources.displayMetrics
+        val widthDp = (dm.widthPixels / dm.density).toInt()
+        val view = AdView(activity)
+        view.setAdSize(AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(activity, widthDp))
+        view.adUnitId = AdsConfig.BANNER_UNIT_ID
+        view.loadAd(AdRequest.Builder().build())
+        return view
+    }
+
+    override fun isReady(): Boolean = ad != null
+
+    override fun show(activity: Activity, onResult: (Boolean) -> Unit) {
+        val rewarded = ad
+        if (rewarded == null) {
+            onResult(false)
+            load()
+            return
+        }
+        ad = null
+        var earned = false
+        rewarded.fullScreenContentCallback = object : FullScreenContentCallback() {
+            override fun onAdDismissedFullScreenContent() {
+                onResult(earned)
+                load()
             }
-        }, 3_000L)
+
+            override fun onAdFailedToShowFullScreenContent(error: AdError) {
+                onResult(false)
+                load()
+            }
+        }
+        rewarded.show(activity) { earned = true }
     }
 }
 
@@ -81,19 +144,11 @@ object RewardedAds {
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun testMode(context: Context): Boolean =
-        context.applicationContext.getSharedPreferences("ghost_prefs", Context.MODE_PRIVATE).getBoolean("ad_test_mode", false)
-
-    fun setTestMode(context: Context, on: Boolean) {
-        context.applicationContext.getSharedPreferences("ghost_prefs", Context.MODE_PRIVATE)
-            .edit().putBoolean("ad_test_mode", on).apply()
+    /** The provider in use: AdMob, set up for children. */
+    fun provider(context: Context): AdProvider {
+        AdMobProvider.start(context)
+        return AdMobProvider
     }
-
-    /**
-     * The provider in use. A real one goes here once a provider whose terms allow apps for children is
-     * chosen and set up. Until then nothing real is shown, and the test mode only shows a fake ad.
-     */
-    fun provider(context: Context): AdProvider = if (testMode(context)) TestAdProvider() else NoAdProvider
 
     private fun dayNumber(): Int {
         val now = System.currentTimeMillis()
@@ -103,7 +158,7 @@ object RewardedAds {
     /** Why an ad cannot be shown now, or null when it can. */
     fun blockedReason(context: Context): String? {
         if (!provider(context).isReady()) {
-            return "الإعلانات غير مفعّلة بعد: لم يُضبط مزوّد إعلانات يناسب تطبيقات الأطفال"
+            return "الإعلان غير جاهز الآن، حاولوا بعد قليل"
         }
         val p = prefs(context)
         if (System.currentTimeMillis() - p.getLong("last", 0L) < MIN_GAP_MS) return "انتظر قليلًا بين إعلان وآخر"

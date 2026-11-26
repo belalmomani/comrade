@@ -88,6 +88,11 @@ class ChildHomeActivity : Activity() {
         super.onBackPressed()
     }
 
+    private fun handleBackGesture() {
+        if (ScreenLock.isActive(this)) return
+        finish()
+    }
+
     // ---------- Screen ----------
 
     private fun tile(kind: Int, color: String, target: Class<*>): IconButtonView {
@@ -166,6 +171,9 @@ class ChildHomeActivity : Activity() {
         root.addView(parentButton, plp)
 
         setContentView(root)
+
+        Edge.apply(this)
+        Edge.onBack(this) { handleBackGesture() }
     }
 
     private fun row(a: View, b: View, side: Int): LinearLayout {

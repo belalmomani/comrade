@@ -1,4 +1,4 @@
-name: Build APK
+name: Build for Google Play
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -21,57 +21,43 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle 8.7
+      - name: Set up Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.7'
+          gradle-version: '8.11.1'
 
-      - name: Prepare signing key
+      - name: Prepare upload key
         env:
           KEYSTORE_B64: ${{ secrets.GHOST_KEYSTORE_BASE64 }}
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
             echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/ghost.keystore"
             echo "GHOST_KEYSTORE_PATH=$RUNNER_TEMP/ghost.keystore" >> "$GITHUB_ENV"
-            echo "Using the stable signing key"
+            echo "Using the upload key"
           else
-            echo "::warning::Secret GHOST_KEYSTORE_BASE64 is missing - using a random debug key, the APK cannot update over a previous install"
+            echo "::warning::Secret GHOST_KEYSTORE_BASE64 is missing - the bundle will be UNSIGNED and Google Play will reject it"
           fi
 
-      - name: Build debug APK
+      - name: Build release bundle (AAB for Google Play)
         env:
           GHOST_KEYSTORE_PASSWORD: ${{ secrets.GHOST_KEYSTORE_PASSWORD }}
-          GHOST_AI_KEYS: ${{ secrets.GHOST_AI_KEYS }}
+          ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
+          ADMOB_REWARDED_ID: ${{ secrets.ADMOB_REWARDED_ID }}
+        run: gradle bundleRelease --stacktrace
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: CuteGhost-release-aab
+          path: app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+
+      - name: Build debug APK (for testing on a phone only)
         run: gradle assembleDebug --stacktrace
 
-      - name: Upload APK
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: CuteGhost-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-
-      - name: Read app version
-        id: ver
-        run: |
-          CODE=$(grep -E 'versionCode *= *[0-9]+' app/build.gradle.kts | head -1 | grep -oE '[0-9]+')
-          NAME=$(grep -E 'versionName *= *"' app/build.gradle.kts | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-          echo "code=$CODE" >> "$GITHUB_OUTPUT"
-          echo "name=$NAME" >> "$GITHUB_OUTPUT"
-
-      - name: Publish release for in-app updates
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
-          OUT="CuteGhost-${{ steps.ver.outputs.name }}-build${{ steps.ver.outputs.code }}.apk"
-          cp "$APK" "$OUT"
-          TAG="build-${{ steps.ver.outputs.code }}"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$OUT" --clobber
-          else
-            gh release create "$TAG" "$OUT" \
-              --title "Cute Ghost ${{ steps.ver.outputs.name }}" \
-              --notes "Cute Ghost ${{ steps.ver.outputs.name }} (build ${{ steps.ver.outputs.code }})" \
-              --target "${{ github.sha }}"
-          fi

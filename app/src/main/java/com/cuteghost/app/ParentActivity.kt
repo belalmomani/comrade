@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
+import com.google.android.gms.ads.AdView
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.LinearLayout
@@ -41,6 +42,7 @@ class ParentActivity : Activity() {
     private lateinit var soundInfo: TextView
     private lateinit var scheduleInfo: TextView
     private lateinit var stopLockButton: Button
+    private var bannerView: AdView? = null
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
@@ -52,7 +54,19 @@ class ParentActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        bannerView?.resume()
         refresh()
+    }
+
+    override fun onPause() {
+        bannerView?.pause()
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        bannerView?.destroy()
+        bannerView = null
+        super.onDestroy()
     }
 
     private fun heading(text: String): TextView {
@@ -238,13 +252,28 @@ class ParentActivity : Activity() {
         col.addView(button("إخفاء الشبح العائم") {
             GhostOverlayService.stop(this)
         })
-        col.addView(button("الإعدادات المتقدمة والتحديث والاختبار") {
+        col.addView(button("الإعدادات المتقدمة") {
             startActivity(Intent(this, MainActivity::class.java))
         })
 
         col.addView(button("إغلاق") { finish() }, topMargin(28))
 
-        setContentView(scroll)
+        // The only banner in the app lives here, behind the parent question
+        val page = LinearLayout(this)
+        page.orientation = LinearLayout.VERTICAL
+        page.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        val banner = AdMobProvider.createBanner(this)
+        bannerView = banner
+        page.addView(
+            banner,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+        setContentView(page)
+
+        Edge.apply(this)
         refresh()
     }
 

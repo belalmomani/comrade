@@ -23,35 +23,22 @@ import android.widget.Toast
 class MainActivity : Activity() {
 
     companion object {
-        private const val REQ_MIC = 100
         private const val REQ_NOTIF = 101
         private const val PREFS = "ghost_prefs"
         private const val KEY_ASKED_NOTIF = "asked_notifications"
-        private const val AUTO_CHECK_GAP_MS = 10L * 60L * 1000L
     }
 
     private lateinit var statusText: TextView
-    private lateinit var updateBanner: View
-    private lateinit var updateText: TextView
-    private lateinit var updateButton: Button
     private val handler = Handler(Looper.getMainLooper())
     private var pendingShow = false
-
-    private var release: Updater.Release? = null
-    private var updating = false
-    private var lastUpdateCheck = -AUTO_CHECK_GAP_MS
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        Edge.apply(this)
         statusText = findViewById(R.id.statusText)
-        updateBanner = findViewById(R.id.updateBanner)
-        updateText = findViewById(R.id.updateText)
-        updateButton = findViewById(R.id.updateButton)
         showVersion()
-        findViewById<TextView>(R.id.privacyNote).setText(
-            if (Features.VOICE_ENABLED) R.string.main_privacy_note else R.string.main_privacy_note_local
-        )
+        findViewById<TextView>(R.id.privacyNote).setText(R.string.main_privacy_note_local)
 
         findViewById<Button>(R.id.showButton).setOnClickListener { proceedShow() }
         findViewById<Button>(R.id.villageButton).setOnClickListener {
@@ -88,10 +75,6 @@ class MainActivity : Activity() {
             isChecked = Sounds.enabled(this@MainActivity)
             setOnCheckedChangeListener { _, on -> Sounds.setEnabled(this@MainActivity, on) }
         }
-        findViewById<android.widget.CheckBox>(R.id.adTestCheck).apply {
-            isChecked = RewardedAds.testMode(this@MainActivity)
-            setOnCheckedChangeListener { _, on -> RewardedAds.setTestMode(this@MainActivity, on) }
-        }
         findViewById<Button>(R.id.mysteryEggButton).setOnClickListener { GhostOverlayService.mysteryEggNow(this) }
         findViewById<Button>(R.id.bathButton).setOnClickListener { GhostOverlayService.bathNow(this) }
         findViewById<Button>(R.id.brushButton).setOnClickListener { GhostOverlayService.brushNow(this) }
@@ -110,7 +93,6 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.mischiefButton).setOnClickListener { GhostOverlayService.mischiefNow(this) }
         findViewById<Button>(R.id.growButton).setOnClickListener { GhostOverlayService.growNow(this) }
         findViewById<Button>(R.id.portalButton).setOnClickListener { testSurprise(false) }
-        findViewById<Button>(R.id.checkUpdateButton).setOnClickListener { checkForUpdate(true) }
 
         val namesField = findViewById<EditText>(R.id.namesField)
         namesField.setText(ChildNames.raw(this))
@@ -118,10 +100,20 @@ class MainActivity : Activity() {
             ChildNames.save(this, namesField.text.toString())
             Toast.makeText(this, R.string.names_saved, Toast.LENGTH_SHORT).show()
         }
-        updateButton.setOnClickListener { startUpdate() }
 
         setupWardrobe()
         askNotificationPermissionOnce()
+        if (!BuildConfig.DEBUG) hideTestControls()
+    }
+
+    /** Developer testing buttons exist only in debug builds; the store version never shows them. */
+    private fun hideTestControls() {
+        val ids = intArrayOf(
+            R.id.feedButton, R.id.drinkButton, R.id.eggButton, R.id.neglectButton, R.id.seasonButton,
+            R.id.unlockAllButton, R.id.growButton, R.id.mischiefButton, R.id.giveButton, R.id.bathButton,
+            R.id.brushButton, R.id.mysteryEggButton, R.id.peekButton, R.id.portalButton
+        )
+        for (id in ids) findViewById<View>(id)?.visibility = View.GONE
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -141,15 +133,6 @@ class MainActivity : Activity() {
         }
         refreshStatus()
         refreshWardrobe()
-
-        // Opened from the update notification, or enough time has passed: look for an update
-        val fromNotification = intent?.getBooleanExtra(Updater.EXTRA_SHOW_UPDATE, false) == true
-        if (fromNotification) {
-            intent?.removeExtra(Updater.EXTRA_SHOW_UPDATE)
-            checkForUpdate(false)
-        } else if (SystemClock.elapsedRealtime() - lastUpdateCheck > AUTO_CHECK_GAP_MS) {
-            checkForUpdate(false)
-        }
     }
 
     override fun onDestroy() {
@@ -163,27 +146,14 @@ class MainActivity : Activity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQ_MIC) {
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                proceedShow()
-            } else {
-                Toast.makeText(this, R.string.mic_denied, Toast.LENGTH_LONG).show()
-            }
-        }
     }
 
     // ---------- Showing the ghost ----------
 
-    /** Overlay permission (-> microphone permission only when voice is enabled) -> start. */
+    /** Overlay permission -> start. */
     private fun proceedShow() {
         if (!Settings.canDrawOverlays(this)) {
             showPermissionDialog()
-            return
-        }
-        if (Features.VOICE_ENABLED &&
-            checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
-        ) {
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQ_MIC)
             return
         }
         startGhost()
@@ -408,7 +378,7 @@ class MainActivity : Activity() {
         }
     }
 
-    // ---------- App updates ----------
+    // ---------- Notifications ----------
 
     private fun askNotificationPermissionOnce() {
         if (Build.VERSION.SDK_INT < 33) return
@@ -417,87 +387,6 @@ class MainActivity : Activity() {
         if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
         prefs.edit().putBoolean(KEY_ASKED_NOTIF, true).apply()
         requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIF)
-    }
-
-    private fun checkForUpdate(manual: Boolean) {
-        lastUpdateCheck = SystemClock.elapsedRealtime()
-        Updater.checkInBackground { latest ->
-            if (isFinishing) return@checkInBackground
-            if (latest != null && Updater.isNewer(this, latest)) {
-                release = latest
-                updateText.text = getString(R.string.update_available, latest.versionName)
-                if (!updating) resetUpdateButton()
-                updateBanner.visibility = View.VISIBLE
-            } else {
-                if (!updating) updateBanner.visibility = View.GONE
-                if (manual) Toast.makeText(this, R.string.update_none, Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
-    private fun resetUpdateButton() {
-        updating = false
-        updateButton.isEnabled = true
-        updateButton.setText(R.string.update_download)
-    }
-
-    private fun startUpdate() {
-        val latest = release ?: return
-        if (updating) return
-        if (!Updater.canInstall(this)) {
-            Toast.makeText(this, R.string.update_allow_install, Toast.LENGTH_LONG).show()
-            try {
-                Updater.openInstallSettings(this)
-            } catch (e: ActivityNotFoundException) {
-                Toast.makeText(this, R.string.settings_unavailable, Toast.LENGTH_LONG).show()
-            }
-            return
-        }
-
-        updating = true
-        updateButton.isEnabled = false
-        updateButton.text = getString(R.string.update_downloading, 0)
-        Thread {
-            val file = Updater.download(this, latest) { pct ->
-                runOnUiThread {
-                    updateButton.text = if (pct >= 0) {
-                        getString(R.string.update_downloading, pct)
-                    } else {
-                        getString(R.string.update_downloading_unknown)
-                    }
-                }
-            }
-            runOnUiThread { onDownloaded(file) }
-        }.start()
-    }
-
-    private fun onDownloaded(file: java.io.File?) {
-        if (isFinishing) return
-        if (file == null) {
-            failUpdate(R.string.update_download_failed)
-            return
-        }
-        // Same package, newer version and the same signing certificate, or Android would refuse it
-        val error = Updater.verify(this, file)
-        if (error != null) {
-            failUpdate(error)
-            return
-        }
-        if (Updater.install(this, file)) {
-            updateButton.setText(R.string.update_installing)
-            // If the user cancels the system dialog, make the button usable again
-            handler.postDelayed({ if (updating) resetUpdateButton() }, 45_000L)
-        } else {
-            failUpdate(R.string.update_install_failed)
-        }
-    }
-
-    private fun failUpdate(messageRes: Int) {
-        resetUpdateButton()
-        AlertDialog.Builder(this)
-            .setMessage(messageRes)
-            .setPositiveButton(android.R.string.ok, null)
-            .show()
     }
 
     // ---------- Status ----------
@@ -510,11 +399,7 @@ class MainActivity : Activity() {
             null
         }
         if (name != null) {
-            // The signature fingerprint tells whether two builds are signed with the same key
-            val signature = Updater.signatureShort(this)
-            var text = getString(R.string.version_label, name)
-            if (signature != null) text += "\n" + getString(R.string.signature_label, signature)
-            findViewById<TextView>(R.id.versionText).text = text
+            findViewById<TextView>(R.id.versionText).text = getString(R.string.version_label, name)
         }
     }
 

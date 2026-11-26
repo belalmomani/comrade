@@ -97,8 +97,6 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         private const val SEASON_DURATION_MS = 15L * 60L * 1000L // snow etc. disappears after 15 minutes
         private const val SEASON_TEST_MS = 40_000L
         private const val SEASON_START_DELAY_MS = 90_000L
-        private const val UPDATE_FIRST_DELAY_MS = 2L * 60L * 1000L
-        private const val UPDATE_CHECK_MS = 12L * 60L * 60L * 1000L
 
         private const val ACTION_FEED_NOW = "com.companion.theghost.FEED_NOW"
         private const val ACTION_EGG_NOW = "com.companion.theghost.EGG_NOW"
@@ -242,7 +240,6 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
     private var egg: EggWindow? = null
     private var notice: NoticeWindow? = null
     private var seasonWindow: SeasonWindow? = null
-    private var voice: VoiceCompanion? = null
 
     private var destroyed = false
     private var serviceStartedAt = 0L
@@ -344,13 +341,6 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         }
     }
 
-    private val updateLoop = object : Runnable {
-        override fun run() {
-            checkForUpdate()
-            handler.postDelayed(this, UPDATE_CHECK_MS)
-        }
-    }
-
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -411,8 +401,6 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         destroyed = true
         handler.removeCallbacksAndMessages(null)
         persist()
-        voice?.release()
-        voice = null
         notice?.dismissNow()
         notice = null
         cancelSurprises()
@@ -443,14 +431,11 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         return try {
             val notification = buildNotification()
             if (Build.VERSION.SDK_INT >= 34) {
-                var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-                if (Features.VOICE_ENABLED &&
-                    checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
-                    PackageManager.PERMISSION_GRANTED
-                ) {
-                    type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-                }
-                startForeground(NOTIFICATION_ID, notification, type)
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
@@ -542,22 +527,6 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         if (!m.show(mp.x, mp.y)) return false
         mother = m
 
-        if (Features.VOICE_ENABLED) {
-            voice = VoiceCompanion(applicationContext, object : VoiceCompanion.Ui {
-                override fun onState(state: GhostView.VoiceState) {
-                    mother?.ghost?.setVoiceState(state)
-                }
-
-                override fun onLevel(level: Float) {
-                    mother?.ghost?.setVoiceLevel(level)
-                }
-
-                override fun onSad() {
-                    mother?.ghost?.showSad()
-                }
-            })
-        }
-
         fedFlag = p.getBoolean(KEY_FED_FLAG, false)
         waterFlag = p.getBoolean(KEY_WATER_FLAG, false)
 
@@ -588,8 +557,6 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
         handler.postDelayed(playLoop, PLAY_LOOP_MS)
         handler.removeCallbacks(proximityLoop)
         handler.postDelayed(proximityLoop, PROXIMITY_MS)
-        handler.removeCallbacks(updateLoop)
-        handler.postDelayed(updateLoop, UPDATE_FIRST_DELAY_MS)
         // Let the first baby out of the house shortly after the start
         handler.postDelayed({ if (!destroyed) manageHouse() }, 1_500L)
         return true
@@ -671,11 +638,6 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
     override fun onTap(who: GhostWindow, head: Boolean) {
         if (activeSession != null || who in dying || who in entering || who.isMoving) return
         if (bedtimeActive || who.sleeping) return // a sleeping ghost is not disturbed
-        val companion = voice
-        if (Features.VOICE_ENABLED && companion != null && who === mother) {
-            companion.onTap()
-            return
-        }
         // A hungry, thirsty, crying or sick ghost opens what it needs when it is tapped
         val pending = who.pendingNeed(System.currentTimeMillis())
         if (pending != null) {
@@ -898,15 +860,7 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
                 if (mw.show(kind, cx, cy, duration) { mischiefWindow = null }) mischiefWindow = mw
             }
         }
-        when (Random.nextInt(4)) {
-            0 -> { // the "broken screen" joke
-                gv.funnyMove(0)
-                notice?.show("$title يشاغب... أوبس!", 3_000L)
-                effect(MischiefView.Effect.CRACK, 1_400L, 7_000L)
-                at(2_000L) { gv.funnyMove(4) }
-                at(3_800L) { gv.funnyMove(1) }
-                at(6_300L) { notice?.show("مزحة! الهاتف سليم تمامًا", 3_500L) }
-            }
+        when (1 + Random.nextInt(3)) {
             1 -> { // throwing colours
                 gv.funnyMove(2)
                 notice?.show("$title يرمي الألوان!", 3_000L)
@@ -1933,16 +1887,6 @@ class GhostOverlayService : Service(), GhostWindow.Host, EggWindow.Host,
             )
         } catch (e: RuntimeException) {
             Log.w(TAG, "Could not open the house screen", e)
-        }
-    }
-
-    // ---------- App updates ----------
-
-    private fun checkForUpdate() {
-        Updater.checkInBackground { release ->
-            if (release != null && Updater.isNewer(this, release)) {
-                Updater.notifyUpdate(this, release)
-            }
         }
     }
 }

@@ -96,6 +96,7 @@ class VillageActivity : Activity() {
         super.onCreate(savedInstanceState)
         root = FrameLayout(this)
         setContentView(root)
+        Edge.apply(this)
         // The restaurant kept selling a little while nobody was looking (more with every level)
         val last = Village.lastVisit(this)
         if (last > 0L) {

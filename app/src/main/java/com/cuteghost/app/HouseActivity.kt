@@ -60,6 +60,8 @@ class HouseActivity : Activity() {
         root.layoutDirection = View.LAYOUT_DIRECTION_RTL
         root.setBackgroundColor(Color.parseColor("#F5F3FF"))
         setContentView(root)
+        Edge.apply(this)
+        Edge.onBack(this) { if (!handleBack()) finish() }
         if (intent.getBooleanExtra(EXTRA_INTERIOR, false)) {
             showInterior(HomeStore.selected(this))
         } else {
@@ -67,12 +69,19 @@ class HouseActivity : Activity() {
         }
     }
 
+    @Suppress("DEPRECATION")
     override fun onBackPressed() {
+        if (!handleBack()) super.onBackPressed()
+    }
+
+    /** Returns true when the back action was used up inside the screen. */
+    private fun handleBack(): Boolean {
         when {
             panel != null -> closeShop()
             inInterior -> showList()
-            else -> super.onBackPressed()
+            else -> return false
         }
+        return true
     }
 
     override fun onResume() {

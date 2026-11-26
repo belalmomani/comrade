@@ -3123,6 +3123,7 @@ class MiniGamesActivity : Activity() {
         blp.setMargins(dp(12), dp(36), dp(12), dp(12))
         root.addView(back, blp)
         setContentView(root)
+        Edge.apply(this)
     }
 }
 
@@ -3172,5 +3173,6 @@ class MiniGameActivity : Activity() {
         blp.setMargins(dp(12), dp(36), dp(12), dp(12))
         root.addView(back, blp)
         setContentView(root)
+        Edge.apply(this)
     }
 }

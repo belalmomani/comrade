@@ -47,6 +47,7 @@ class GoalsActivity : Activity() {
         alp.setMargins(dp(12), dp(36), dp(12), dp(12))
         root.addView(album, alp)
         setContentView(root)
+        Edge.apply(this)
     }
 
     override fun onResume() {
