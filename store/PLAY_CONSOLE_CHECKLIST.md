@@ -7,7 +7,7 @@
 3. AdMob: المعرّفات الحقيقية موضوعة في `app/build.gradle.kts` (نسخة release فقط)، ونسخة debug تستخدم معرّفات الاختبار دائمًا. لا تضغط على إعلاناتك الحقيقية أبدًا. ويمكن تجاوز المعرّفات عبر السرّين `ADMOB_APP_ID` و`ADMOB_REWARDED_ID` و`ADMOB_BANNER_ID`.
 4. في AdMob: حدّ مستوى المحتوى إلى G وامنع الفئات الحساسة.
 5. شغّل Actions ونزّل `CuteGhost-release-aab` وارفعه في Play Console.
-6. ضع `store/PRIVACY_POLICY.md` على رابط عام (GitHub Pages أو أي موقع) وأدخل الرابط في Play Console، بعد وضع بريدك فيه.
+6. ارفع مجلد الموقع `cute-ghost` إلى مستودع GitHub Pages، ثم أدخل في Play Console: رابط الخصوصية `https://belalmomani.github.io/GitHubPages/cute-ghost/privacy.html`، ورابط حذف البيانات `https://belalmomani.github.io/GitHubPages/cute-ghost/delete-data.html`، وبريد المطوّر `bilalalmomani90@gmail.com`.
 
 ## 1) App content (محتوى التطبيق)
 - **Target audience:** اختر فئة «5 سنوات وأقل» فقط (لا تختر فئات أكبر، وإلا تتغير المتطلبات).

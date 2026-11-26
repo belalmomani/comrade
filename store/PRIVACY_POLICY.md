@@ -21,7 +21,7 @@
 - **الإنترنت:** لعرض الإعلان المكافئ فقط.
 
 ## الأمان والاتصال بنا
-لا نشارك أي بيانات مع أطراف ثالثة عدا ما ذُكر في قسم الإعلانات. للاستفسار أو طلب حذف أي بيانات: **[ضع بريدك الإلكتروني هنا]**
+لا نشارك أي بيانات مع أطراف ثالثة عدا ما ذُكر في قسم الإعلانات. للاستفسار أو طلب حذف أي بيانات: **bilalalmomani90@gmail.com**
 
 ---
 
@@ -37,4 +37,4 @@ This app is designed for children aged 5 and under and is meant to be used with 
 
 **Permissions:** "display over other apps" draws the floating ghost characters (the core feature) with a parent's approval; a foreground service and notification keep the characters visible and run parent-set play time; internet is used only for the optional rewarded ad.
 
-**Contact / data requests:** [put your email here]
+**Contact / data requests:** bilalalmomani90@gmail.com
