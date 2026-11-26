@@ -39,7 +39,7 @@ interface AdProvider {
  * Google AdMob rewarded ads, configured for children (Google Play Families policy):
  * child-directed treatment, under-age-of-consent, G content rating only, no advertising id
  * (the AD_ID permission is removed in the manifest). Ads are only shown by [RewardedAds.watch],
- * which asks a grown-up first.
+ * after the person clearly chooses to watch one.
  */
 object AdMobProvider : AdProvider {
     override val name = "admob"
@@ -132,8 +132,8 @@ object AdMobProvider : AdProvider {
 }
 
 /**
- * Optional rewarded ads for the grown-ups, never forced on the child: the reward is named before the
- * ad starts, a parent question comes first, ads are spaced out and limited per day, and the reward is
+ * Optional rewarded ads, never forced: the reward is named before the
+ * ad starts, the person chooses to watch, ads are spaced out and limited per day, and the reward is
  * given only when the provider says the ad was watched to the end, once per ad.
  */
 object RewardedAds {
@@ -194,36 +194,13 @@ object RewardedAds {
         }
     }
 
+    /** A plain, clear question: the reward is named and the person chooses to watch or not. */
     private fun askParent(activity: Activity, offer: String, onPass: () -> Unit) {
-        val a = 6 + Random.nextInt(4)
-        val b = 6 + Random.nextInt(4)
-        val box = LinearLayout(activity)
-        box.orientation = LinearLayout.VERTICAL
-        box.setPadding(48, 24, 48, 0)
-        val msg = TextView(activity)
-        msg.text = "للأهل فقط.\nالمكافأة: $offer\n\nللتأكد أنكم من الأهل: كم يساوي $a × $b ؟"
-        msg.textSize = 16f
-        msg.setTextColor(Color.parseColor("#2B2540"))
-        box.addView(msg)
-        val input = EditText(activity)
-        input.inputType = InputType.TYPE_CLASS_NUMBER
-        box.addView(input)
-        val dialog = AlertDialog.Builder(activity)
-            .setTitle("مشاهدة إعلان اختياري")
-            .setView(box)
-            .setPositiveButton("شاهد الإعلان", null)
-            .setNegativeButton("إلغاء", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                if (input.text.toString().trim() == (a * b).toString()) {
-                    dialog.dismiss()
-                    onPass()
-                } else {
-                    Toast.makeText(activity, "إجابة غير صحيحة", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-        dialog.show()
+        AlertDialog.Builder(activity)
+            .setTitle("مشاهدة إعلان قصير")
+            .setMessage("شاهد إعلانًا قصيرًا واحصل على:\n$offer")
+            .setPositiveButton("شاهد الإعلان") { _, _ -> onPass() }
+            .setNegativeButton("لا شكرًا", null)
+            .show()
     }
 }

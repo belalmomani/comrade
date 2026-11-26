@@ -44,7 +44,7 @@
     <string name="feed_thanks">شكرًا! طعمه لذيذ</string>
     <string name="feed_now">جرّب الإطعام الآن</string>
     <string name="feed_need_ghost">أظهر الشبح أولًا</string>
-    <string name="main_privacy_note_local">هذا التطبيق لا يستخدم الميكروفون ولا الكاميرا ولا الموقع، ولا يطلب أي حساب. يُحفظ تقدّم الطفل على الجهاز فقط. قد يعرض إعلانًا مكافئًا اختياريًا مناسبًا للأطفال، ولا يظهر إلا بعد سؤال الأهل.</string>
+    <string name="main_privacy_note_local">هذا التطبيق لا يستخدم الميكروفون ولا الكاميرا ولا الموقع، ولا يطلب أي حساب. يُحفظ تقدّم الطفل على الجهاز فقط. قد يعرض إعلانًا مكافئًا اختياريًا مناسبًا للأطفال، ولا يظهر إلا عند اختيار المشاهدة فقط.</string>
     <string name="drink_ask">أرجوك اسقني، أنا عطشان</string>
     <string name="drink_thanks">آه، ارتحت! شكرًا</string>
     <string name="drink_now">جرّب السقي الآن</string>
