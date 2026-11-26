@@ -7,10 +7,10 @@ plugins {
 // For Google Play this is the UPLOAD key. Keep a backup of it: losing it means a support request to Google.
 val keystorePath: String? = System.getenv("GHOST_KEYSTORE_PATH")
 val keystorePassword: String? = System.getenv("GHOST_KEYSTORE_PASSWORD")
-fun envOf(vararg names: String): String? = names.map { System.getenv(it) }.firstOrNull { !it.isNullOrBlank() }
-// The key alias / key password can be supplied as GHOST_KEY_* or ANDROID_KEY_* secrets (the first one that is set wins)
-val keyAliasName: String = envOf("GHOST_KEY_ALIAS", "ANDROID_KEY_ALIAS") ?: "cuteghost"
-val keyPasswordValue: String? = envOf("GHOST_KEY_PASSWORD", "ANDROID_KEY_PASSWORD") ?: keystorePassword
+// Alias and key password of THIS game's keystore. Only GHOST_* secrets are read (the ANDROID_KEY_* secrets
+// in the repository belong to another app). Defaults: alias "cuteghost", key password = keystore password.
+val keyAliasName: String = System.getenv("GHOST_KEY_ALIAS")?.takeIf { it.isNotBlank() } ?: "cuteghost"
+val keyPasswordValue: String? = System.getenv("GHOST_KEY_PASSWORD")?.takeIf { it.isNotBlank() } ?: keystorePassword
 
 fun clean(value: String?): String = (value ?: "").replace("\"", "").replace("\\", "").trim()
 

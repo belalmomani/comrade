@@ -41,8 +41,8 @@ jobs:
       - name: Build release bundle (AAB for Google Play)
         env:
           GHOST_KEYSTORE_PASSWORD: ${{ secrets.GHOST_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          GHOST_KEY_ALIAS: ${{ secrets.GHOST_KEY_ALIAS }}
+          GHOST_KEY_PASSWORD: ${{ secrets.GHOST_KEY_PASSWORD }}
           ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
           ADMOB_REWARDED_ID: ${{ secrets.ADMOB_REWARDED_ID }}
         run: gradle bundleRelease --stacktrace
@@ -57,8 +57,8 @@ jobs:
       - name: Build debug APK (for testing on a phone only)
         env:
           GHOST_KEYSTORE_PASSWORD: ${{ secrets.GHOST_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          GHOST_KEY_ALIAS: ${{ secrets.GHOST_KEY_ALIAS }}
+          GHOST_KEY_PASSWORD: ${{ secrets.GHOST_KEY_PASSWORD }}
         run: gradle assembleDebug --stacktrace
 
       - name: Upload debug APK
