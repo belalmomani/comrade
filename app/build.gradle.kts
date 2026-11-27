@@ -20,6 +20,7 @@ fun clean(value: String?): String = (value ?: "").replace("\"", "").replace("\\"
 val testAppId = "ca-app-pub-3940256099942544~3347511713"
 val testRewardedId = "ca-app-pub-3940256099942544/5224354917"
 val testBannerId = "ca-app-pub-3940256099942544/9214589741"
+val testInterstitialId = "ca-app-pub-3940256099942544/1033173712"
 val realAppId = "ca-app-pub-7098954256458559~6991369939"
 val realRewardedId = "ca-app-pub-7098954256458559/4911875195"
 val realBannerId = "ca-app-pub-7098954256458559/7238781940"
@@ -29,6 +30,8 @@ val admobRewardedId: String = clean(System.getenv("ADMOB_REWARDED_ID") ?: (proje
     .ifEmpty { realRewardedId }
 val admobBannerId: String = clean(System.getenv("ADMOB_BANNER_ID") ?: (project.findProperty("ADMOB_BANNER_ID") as String?))
     .ifEmpty { realBannerId }
+// No real interstitial unit yet: release keeps interstitials OFF (empty id) until ADMOB_INTERSTITIAL_ID is set.
+val admobInterstitialId: String = clean(System.getenv("ADMOB_INTERSTITIAL_ID") ?: (project.findProperty("ADMOB_INTERSTITIAL_ID") as String?))
 
 val hasStableKey = !keystorePath.isNullOrEmpty() &&
     !keystorePassword.isNullOrEmpty() &&
@@ -52,6 +55,7 @@ android {
         buildConfigField("String", "ADMOB_APP_ID", "\"$admobAppId\"")
         buildConfigField("String", "ADMOB_REWARDED_ID", "\"$admobRewardedId\"")
         buildConfigField("String", "ADMOB_BANNER_ID", "\"$admobBannerId\"")
+        buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"$admobInterstitialId\"")
         manifestPlaceholders["admobAppId"] = admobAppId
     }
 
@@ -71,6 +75,7 @@ android {
             buildConfigField("String", "ADMOB_APP_ID", "\"$testAppId\"")
             buildConfigField("String", "ADMOB_REWARDED_ID", "\"$testRewardedId\"")
             buildConfigField("String", "ADMOB_BANNER_ID", "\"$testBannerId\"")
+            buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"$testInterstitialId\"")
             manifestPlaceholders["admobAppId"] = testAppId
             if (hasStableKey) {
                 signingConfig = signingConfigs.getByName("stable")

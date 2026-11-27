@@ -3134,6 +3134,13 @@ class MiniGameActivity : Activity() {
         const val EXTRA_GAME = "game"
     }
 
+    private var rounds = 0
+
+    /** Leaving a game is a natural break: after a few rounds a short ad may appear (spacing and daily limits apply). */
+    private fun leave() {
+        if (rounds >= 3) InterstitialAds.maybeShow(this) { finish() } else finish()
+    }
+
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -3155,7 +3162,10 @@ class MiniGameActivity : Activity() {
             MiniGames.GAME_PEEKABOO -> PeekabooView(this)
             else -> BubblesView(this)
         }
-        view.onRound = { MiniGames.roundDone(this, game) }
+        view.onRound = {
+            rounds += 1
+            MiniGames.roundDone(this, game)
+        }
         view.onStar = {
             Album.unlock(this, "discover_golden_bubble")
             MiniGames.goldenStar(this)
@@ -3168,11 +3178,12 @@ class MiniGameActivity : Activity() {
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         )
         val back = IconButtonView(this, IconButtonView.BACK, Color.parseColor("#9A8FC0"))
-        back.setOnClickListener { finish() }
+        back.setOnClickListener { leave() }
         val blp = FrameLayout.LayoutParams(dp(56), dp(56), Gravity.TOP or Gravity.START)
         blp.setMargins(dp(12), dp(36), dp(12), dp(12))
         root.addView(back, blp)
         setContentView(root)
         Edge.apply(this)
+        InterstitialAds.preload(this)
     }
 }

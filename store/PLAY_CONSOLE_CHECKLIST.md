@@ -5,7 +5,7 @@
    `keytool -genkeypair -v -keystore ghost.keystore -alias cuteghost -keyalg RSA -keysize 2048 -validity 10000`
 2. حوّله: `base64 -w0 ghost.keystore` وأضف في GitHub Secrets: `GHOST_KEYSTORE_BASE64` و`GHOST_KEYSTORE_PASSWORD`.
 3. AdMob: المعرّفات الحقيقية موضوعة في `app/build.gradle.kts` (نسخة release فقط)، ونسخة debug تستخدم معرّفات الاختبار دائمًا. لا تضغط على إعلاناتك الحقيقية أبدًا. ويمكن تجاوز المعرّفات عبر السرّين `ADMOB_APP_ID` و`ADMOB_REWARDED_ID` و`ADMOB_BANNER_ID`.
-4. في AdMob: حدّ مستوى المحتوى إلى G وامنع الفئات الحساسة.
+4. في AdMob: حدّ مستوى المحتوى إلى G وامنع الفئات الحساسة. وأنشئ وحدة «إعلان بيني» (Interstitial) وضع معرّفها في السرّ `ADMOB_INTERSTITIAL_ID`؛ بدونه تبقى الإعلانات البينية متوقفة.
 5. شغّل Actions ونزّل `CuteGhost-release-aab` وارفعه في Play Console.
 6. ارفع مجلد الموقع `cute-ghost` إلى مستودع GitHub Pages، ثم أدخل في Play Console: رابط الخصوصية `https://belalmomani.github.io/GitHubPages/cute-ghost/privacy.html`، ورابط حذف البيانات `https://belalmomani.github.io/GitHubPages/cute-ghost/delete-data.html`، وبريد المطوّر `bilalalmomani90@gmail.com`.
 

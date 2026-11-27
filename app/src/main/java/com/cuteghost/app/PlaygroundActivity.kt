@@ -65,6 +65,7 @@ class PlaygroundActivity : Activity() {
         setContentView(root)
         Edge.apply(this)
         Edge.onBack(this) { if (inGame) showPlayground() else finish() }
+        InterstitialAds.preload(this)
         showPlayground()
     }
 
@@ -328,7 +329,10 @@ class PlaygroundActivity : Activity() {
             .setTitle("انتهت الرحلة!")
             .setMessage("جمعتم $collected نجمة. المنطاد يطير مرة أخرى غدًا.")
             .setCancelable(false)
-            .setPositiveButton("العودة إلى المدينة") { _, _ -> showPlayground() }
+            .setPositiveButton("العودة إلى المدينة") { _, _ ->
+                // after the score screen: a natural break for an optional short ad
+                InterstitialAds.maybeShow(this) { showPlayground() }
+            }
             .show()
     }
 }

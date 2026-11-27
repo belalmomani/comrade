@@ -8,4 +8,6 @@ object AdsConfig {
     val APP_ID: String = BuildConfig.ADMOB_APP_ID
     val REWARDED_UNIT_ID: String = BuildConfig.ADMOB_REWARDED_ID
     val BANNER_UNIT_ID: String = BuildConfig.ADMOB_BANNER_ID
+    /** Empty in release until the interstitial unit id is supplied (then interstitials stay off). */
+    val INTERSTITIAL_UNIT_ID: String = BuildConfig.ADMOB_INTERSTITIAL_ID
 }
